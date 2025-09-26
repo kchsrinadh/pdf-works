@@ -457,4 +457,3 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 - Added visual ASCII preview of border layout
 - Added settings confirmation prompt before processing
 - Improved progress display with quality mode information
-```
