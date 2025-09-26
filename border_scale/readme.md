@@ -12,6 +12,8 @@ A powerful Python tool for adding customizable borders to PDF pages while preser
 - 📏 **Multiple Units**: Support for inches, millimeters, and points
 - ✅ **Settings Preview**: Review all settings before processing with visual ASCII preview
 - 👁️ **Visual Layout Preview**: See exactly how borders will look before processing
+- 📄 **Page Range Selection**: Process specific pages or page ranges
+- ⌨️ **Intuitive Confirmation**: Simple Enter/any-key confirmation system
 
 ## Installation
 
@@ -29,7 +31,7 @@ pip install pypdf reportlab pymupdf
 
 ### Basic Usage
 ```bash
-python border_scale.py input.pdf output.pdf
+python border_scale.py document.pdf output.pdf
 ```
 ## Output Example
 
@@ -39,8 +41,11 @@ python border_scale.py input.pdf output.pdf
 ============================================================
 
 📁 Files:
-  • Input:  input.pdf (12.3MB)
+  • Input:  document.pdf (47.9MB)
   • Output: output.pdf
+
+📄 Pages:
+  • Processing: All pages (1-514)
 
 📐 Spacing:
   • Outer margin:  0.50 inch (36.0 pts)
@@ -100,17 +105,27 @@ LEGEND:
 ============================================================
 
 ❓ Do you want to proceed with these settings?
-   Press Enter to continue, or Ctrl+C to cancel...
+   • Press ENTER to continue
+   • Press any other key to cancel
+
+   Waiting for input...
+✅ Proceeding with processing...
 
 📄 Reading 'document.pdf'...
-Processing 'document.pdf' (100 pages, 12.3MB)
+Processing 'document.pdf' (16 of 100 pages, 12.3MB)
 Quality mode: ORIGINAL
-[########################################] 100/100 pages
+[########################################] 16/16 pages
 💾 Saving PDF with quality preservation...
-✅ Saved 'output.pdf' (13.1MB)
-⏱️  Processing time: 15.23 seconds
+✅ Saved 'output.pdf' (2.1MB)
+⏱️  Processing time: 3.45 seconds
 ```
----
+
+
+### Process Specific Pages
+```bash
+python border_scale.py input.pdf output.pdf --pages 1-10
+```
+
 ### With Custom Settings
 ```bash
 python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
@@ -123,6 +138,11 @@ python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
 |----------|-------------|
 | `input_pdf` | Path to input PDF file |
 | `output_pdf` | Path to output PDF file |
+
+### Page Selection
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--pages` | all | Page range to process (e.g., "1-5", "1,3,5", "1-3,7-10") |
 
 ### Spacing Options
 | Option | Default | Description |
@@ -152,80 +172,103 @@ python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
 ## Usage Examples
 
 ### 1. Basic Border Addition
-Add default borders (0.5" outer, 0.25" inner) with original quality:
+Add default borders to all pages:
 ```bash
 python border_scale.py document.pdf output.pdf
 ```
 
-### 2. Custom Spacing
+### 2. Process Specific Pages
+First 10 pages only:
+```bash
+python border_scale.py document.pdf output.pdf --pages 1-10
+```
+
+### 3. Multiple Page Ranges
+Process pages 1-5, page 10, and pages 15-20:
+```bash
+python border_scale.py document.pdf output.pdf --pages 1-5,10,15-20
+```
+
+### 4. Custom Spacing
 Large outer margin with minimal inner padding:
 ```bash
 python border_scale.py document.pdf output.pdf --outer 1.5 --inner 0.1
 ```
 
-### 3. Metric Units
+### 5. Metric Units
 Using millimeters for precise control:
 ```bash
 python border_scale.py document.pdf output.pdf --outer 25 --inner 10 --unit mm
 ```
 
-### 4. Colored Border
+### 6. Colored Border
 Red border with 3pt width:
 ```bash
 python border_scale.py document.pdf output.pdf --border-width 3 --border-color "255,0,0"
 ```
 
-### 5. Blue Border with Custom Spacing
+### 7. Blue Border with Custom Spacing
 ```bash
 python border_scale.py document.pdf output.pdf --outer 0.75 --inner 0.5 --border-color "0,0,255"
 ```
 
-### 6. Maximum Quality for Text Documents
-Preserves vector graphics as vectors (default mode):
+### 8. Process Cover Pages Only
+First and last page:
 ```bash
-python border_scale.py document.pdf output.pdf --quality original
+python border_scale.py document.pdf output.pdf --pages 1,100
 ```
 
-### 7. High-Resolution Processing
+### 9. High-Resolution Processing
 For documents with detailed images:
 ```bash
 python border_scale.py document.pdf output.pdf --quality high --dpi 600
 ```
 
-### 8. Fast Processing
-Balanced quality and speed:
+### 10. Fast Processing for Drafts
+Medium quality with specific pages:
 ```bash
-python border_scale.py document.pdf output.pdf --quality medium
+python border_scale.py document.pdf output.pdf --pages 1-20 --quality medium
 ```
 
-### 9. Batch Processing (Skip Confirmation)
+### 11. Batch Processing (Skip Confirmation)
 ```bash
-python border_scale.py input.pdf output.pdf -y --outer 1.0 --inner 0.5
+python border_scale.py input.pdf output.pdf -y --outer 1.0 --inner 0.5 --pages 1-50
 ```
 
-### 10. Minimal Borders
-Thin borders with small margins:
-```bash
-python border_scale.py document.pdf output.pdf --outer 0.25 --inner 0.1 --border-width 0.5
-```
-
-### 11. Professional Report Style
+### 12. Professional Report Style
 Wide margins for binding and notes:
 ```bash
 python border_scale.py report.pdf final_report.pdf --outer 1.25 --inner 0.75 --border-width 2
 ```
 
-### 12. A4 Paper with Metric Margins
-Standard European formatting:
+### 13. Chapter Processing
+Process specific chapter pages:
 ```bash
-python border_scale.py document.pdf output.pdf --outer 20 --inner 15 --unit mm
+python border_scale.py book.pdf chapter1.pdf --pages 1-35
+python border_scale.py book.pdf chapter2.pdf --pages 36-78
 ```
 
-### 13. Stretch to Fit
-Fill the border area (may distort content):
+### 14. Even/Odd Pages (manual selection)
+Process even pages:
 ```bash
-python border_scale.py document.pdf output.pdf --no-preserve-ratio
+python border_scale.py document.pdf even.pdf --pages 2,4,6,8,10,12,14,16,18,20
 ```
+
+### 15. Skip Middle Pages
+Process beginning and end only:
+```bash
+python border_scale.py document.pdf output.pdf --pages 1-10,90-100
+```
+
+## Page Range Syntax
+
+The `--pages` option supports flexible page range specifications:
+
+- **Single page**: `5` - Process only page 5
+- **Range**: `1-10` - Process pages 1 through 10
+- **Multiple pages**: `1,3,5,7` - Process specific pages
+- **Combined**: `1-5,10,15-20` - Mix ranges and individual pages
+- **All pages**: `all` or omit the option - Process entire document
 
 ## Quality Modes Explained
 
@@ -277,34 +320,24 @@ Page Edge
 ```
 
 ### Interactive Preview
-Before processing, the tool shows an ASCII art preview of how your settings will look:
+Before processing, the tool shows an ASCII art preview of how your settings will look.
+
+## Interactive Confirmation
+
+The tool provides a clear, interactive confirmation before processing:
 
 ```
-📐 PREVIEW OF BORDER LAYOUT:
+❓ Do you want to proceed with these settings?
+   • Press ENTER to continue
+   • Press any other key to cancel
 
-────────────────────────────────────────────────────────────
-│                                                          │
-│                                                          │
-│  ████████████████████████████████████████████████████    │
-│  █                                                  █    │
-│  █  ·············································   █    │
-│  █  ·                                           ·   █    │
-│  █  ·              PDF CONTENT                  ·   █    │
-│  █  ·             ← preserved →                 ·   █    │
-│  █  ·                                           ·   █    │
-│  █  ·············································   █    │
-│  █                                                  █    │
-│  ████████████████████████████████████████████████████    │
-│                                                          │
-────────────────────────────────────────────────────────────
-
-LEGEND:
-  ─│ Page edges
-  █ Border (Black)
-  · Content area boundary
-  ← Outer margin: from page edge to border
-  → Inner padding: from border to content
+   Waiting for input...
 ```
+
+- **ENTER key**: Proceeds with processing (shows ✅)
+- **Any other key**: Cancels the operation (shows ❌)
+- **Skip prompt**: Use `-y` or `--yes` flag to skip confirmation
+
 
 ## Tips for Best Results
 
@@ -314,17 +347,41 @@ LEGEND:
 4. **For print preparation**: Use larger outer margins (1.0" or more)
 5. **For digital viewing**: Use smaller margins (0.25" - 0.5")
 6. **Review settings first**: The preview shows exactly how borders will look before processing
-
-
+7. **Process in batches**: Use page ranges to process large documents in sections
+8. **Test first**: Process a few pages first to verify settings before processing entire document
+9. **Quick cancellation**: Press any key other than Enter to cancel at confirmation
 
 ## What's New
 
-### Latest Features
+### Latest Features (Version 3.1)
+- **Enhanced Confirmation System**: Clear Enter/any-key confirmation with visual feedback
+- **Improved User Experience**: Shows "Waiting for input..." and success/cancel indicators
+
+### Version 3.0
+- **Page Range Selection**: Process specific pages or ranges
+- **Enhanced Progress Display**: Shows pages being processed vs total
+- **Improved Settings Display**: Clear indication of which pages will be processed
+- **Flexible Page Syntax**: Support for complex page range specifications
+
+### Version 2.0
 - **Visual Preview**: See ASCII art representation of border layout before processing
 - **Settings Confirmation**: Review all settings upfront with option to cancel
 - **Default Quality Change**: `original` mode is now default for best text preservation
 - **Enhanced Progress Display**: Shows quality mode and DPI during processing
-- **Better Error Handling**: Clear messages for missing dependencies
+
+## Performance Notes
+
+- **Processing Speed**: Varies by quality mode, file size, and number of pages
+  - Original: Fast (vector preservation)
+  - High: Slower (rasterization at high DPI)
+  - Medium: Moderate
+  - Standard: Fast (basic processing)
+
+- **File Size Changes**:
+  - Processing fewer pages results in smaller output files
+  - Original mode: Usually maintains similar file size per page
+  - High mode: May increase file size significantly
+  - Medium mode: Moderate increase
 
 ## Troubleshooting
 
@@ -333,22 +390,27 @@ If you see a warning about PyMuPDF, install it for better quality:
 ```bash
 pip install pymupdf
 ```
-The tool will still work using the standard mode, but with basic quality preservation.
+
+### Invalid Page Range
+Ensure page numbers are within document range and properly formatted:
+- Correct: `1-10`, `1,3,5`, `1-3,7-10`
+- Incorrect: `10-1`, `0-5`, `1-1000` (if document has fewer pages)
 
 ### Memory Issues with Large PDFs
-For very large PDFs, use medium quality:
+Process in smaller batches:
 ```bash
-python border_scale.py large.pdf output.pdf --quality medium
+python border_scale.py large.pdf part1.pdf --pages 1-100
+python border_scale.py large.pdf part2.pdf --pages 101-200
 ```
 
 ### Slow Processing
-Use standard mode for faster processing:
-```bash
-python border_scale.py input.pdf output.pdf --quality standard
-```
+- Use `--quality medium` or `--quality standard` for faster processing
+- Process fewer pages at once using page ranges
 
-### Preview Not Displaying Correctly
-If the ASCII preview appears garbled, ensure your terminal supports UTF-8 encoding and has sufficient width (at least 80 characters).
+### Confirmation Not Working
+If the interactive confirmation doesn't work on your system:
+- Use the `-y` flag to skip confirmation
+- The tool will fall back to standard Enter confirmation if key detection fails
 
 ## Requirements
 
@@ -363,19 +425,10 @@ If the ASCII preview appears garbled, ensure your terminal supports UTF-8 encodi
 - reportlab
 - pymupdf (for high-quality modes)
 
-## Performance Notes
-
-- **Processing Speed**: Varies by quality mode and file size
-  - Original: Fast (vector preservation)
-  - High: Slower (rasterization at high DPI)
-  - Medium: Moderate
-  - Standard: Fast (basic processing)
-
-- **File Size Changes**:
-  - Original mode: Usually maintains similar file size
-  - High mode: May increase file size significantly
-  - Medium mode: Moderate increase
-  - Standard mode: Minimal change
+### Platform Notes
+- **Windows**: Full key detection support via msvcrt
+- **Linux/Mac**: Full key detection support via termios
+- **Other platforms**: Falls back to Enter-only confirmation
 
 ## License
 
@@ -387,11 +440,21 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## Changelog
 
+### Version 3.1
+- Enhanced confirmation prompt with Enter/any-key system
+- Added visual feedback (✅/❌) for user actions
+- Improved cross-platform key detection
+- Added "Waiting for input..." indicator
+
+### Version 3.0
+- Added page range selection with `--pages` option
+- Support for complex page range specifications
+- Enhanced progress display for partial processing
+- Improved settings preview with page information
+
 ### Version 2.0
 - Changed default quality mode to `original` for better text preservation
 - Added visual ASCII preview of border layout
 - Added settings confirmation prompt before processing
 - Improved progress display with quality mode information
-- Fixed formatting issues in terminal output
-- Enhanced error handling and dependency checking
 ```
