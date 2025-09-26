@@ -10,7 +10,8 @@ A powerful Python tool for adding customizable borders to PDF pages while preser
 - 📈 **Real-time Progress**: Visual progress bar with detailed status
 - 🔄 **Aspect Ratio Control**: Preserve or stretch content as needed
 - 📏 **Multiple Units**: Support for inches, millimeters, and points
-- ✅ **Settings Preview**: Review all settings before processing
+- ✅ **Settings Preview**: Review all settings before processing with visual ASCII preview
+- 👁️ **Visual Layout Preview**: See exactly how borders will look before processing
 
 ## Installation
 
@@ -30,7 +31,86 @@ pip install pypdf reportlab pymupdf
 ```bash
 python border_scale.py input.pdf output.pdf
 ```
+## Output Example
 
+```
+============================================================
+📋 BORDER SETTINGS TO BE APPLIED
+============================================================
+
+📁 Files:
+  • Input:  input.pdf (12.3MB)
+  • Output: output.pdf
+
+📐 Spacing:
+  • Outer margin:  0.50 inch (36.0 pts)
+  • Inner padding: 0.25 inch (18.0 pts)
+  • Total spacing: 0.75 inch
+
+🎨 Border Style:
+  • Width: 1 pts
+  • Color: RGB(0, 0, 0)
+
+⚙️  Quality Settings:
+  • Quality mode: ORIGINAL
+  • Preserve aspect ratio: Yes
+
+============================================================
+
+📐 PREVIEW OF BORDER LAYOUT:
+
+────────────────────────────────────────────────────────────
+│                                                          │
+│                                                          │
+│  ████████████████████████████████████████████████████    │
+│  █                                                  █    │
+│  █  ·············································   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·              PDF CONTENT                  ·   █    │
+│  █  ·             ← preserved →                 ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·············································   █    │
+│  █                                                  █    │
+│  ████████████████████████████████████████████████████    │
+│                                                          │
+│                                                          │
+────────────────────────────────────────────────────────────
+
+LEGEND:
+  ─│ Page edges
+  █ Border (Black)
+  · Content area boundary
+  ← Outer margin: from page edge to border
+  → Inner padding: from border to content
+
+============================================================
+
+❓ Do you want to proceed with these settings?
+   Press Enter to continue, or Ctrl+C to cancel...
+
+📄 Reading 'document.pdf'...
+Processing 'document.pdf' (100 pages, 12.3MB)
+Quality mode: ORIGINAL
+[########################################] 100/100 pages
+💾 Saving PDF with quality preservation...
+✅ Saved 'output.pdf' (13.1MB)
+⏱️  Processing time: 15.23 seconds
+```
+---
 ### With Custom Settings
 ```bash
 python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
@@ -60,7 +140,7 @@ python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
 ### Quality Settings
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--quality` | high | Quality mode: `original`, `high`, `medium`, `standard` |
+| `--quality` | **original** | Quality mode: `original`, `high`, `medium`, `standard` |
 | `--dpi` | 300 | DPI for rendering (high/medium quality modes) |
 | `--no-preserve-ratio` | False | Stretch content to fit (may distort) |
 
@@ -72,7 +152,7 @@ python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
 ## Usage Examples
 
 ### 1. Basic Border Addition
-Add default borders (0.5" outer, 0.25" inner):
+Add default borders (0.5" outer, 0.25" inner) with original quality:
 ```bash
 python border_scale.py document.pdf output.pdf
 ```
@@ -101,7 +181,7 @@ python border_scale.py document.pdf output.pdf --outer 0.75 --inner 0.5 --border
 ```
 
 ### 6. Maximum Quality for Text Documents
-Preserves vector graphics as vectors:
+Preserves vector graphics as vectors (default mode):
 ```bash
 python border_scale.py document.pdf output.pdf --quality original
 ```
@@ -149,15 +229,16 @@ python border_scale.py document.pdf output.pdf --no-preserve-ratio
 
 ## Quality Modes Explained
 
-### `original` - Vector Preservation
+### `original` - Vector Preservation (Default)
 - **Best for**: Text documents, technical drawings, forms
-- **Pros**: Maintains vector graphics, text remains searchable
+- **Pros**: Maintains vector graphics, text remains searchable, no rasterization
 - **Cons**: May not handle complex images well
+- **Note**: This is the default mode for maximum quality preservation
 
-### `high` - High-Quality Rendering (Default)
+### `high` - High-Quality Rendering
 - **Best for**: Mixed content (text + images)
 - **Pros**: Excellent quality, configurable DPI
-- **Cons**: Larger file sizes
+- **Cons**: Larger file sizes, converts vectors to raster
 
 ### `medium` - Balanced Mode
 - **Best for**: Draft documents, quick processing
@@ -171,6 +252,7 @@ python border_scale.py document.pdf output.pdf --no-preserve-ratio
 
 ## Understanding Spacing
 
+### Visual Layout
 ```
 Page Edge
 │
@@ -194,52 +276,55 @@ Page Edge
   Margin    Padding
 ```
 
+### Interactive Preview
+Before processing, the tool shows an ASCII art preview of how your settings will look:
+
+```
+📐 PREVIEW OF BORDER LAYOUT:
+
+────────────────────────────────────────────────────────────
+│                                                          │
+│                                                          │
+│  ████████████████████████████████████████████████████    │
+│  █                                                  █    │
+│  █  ·············································   █    │
+│  █  ·                                           ·   █    │
+│  █  ·              PDF CONTENT                  ·   █    │
+│  █  ·             ← preserved →                 ·   █    │
+│  █  ·                                           ·   █    │
+│  █  ·············································   █    │
+│  █                                                  █    │
+│  ████████████████████████████████████████████████████    │
+│                                                          │
+────────────────────────────────────────────────────────────
+
+LEGEND:
+  ─│ Page edges
+  █ Border (Black)
+  · Content area boundary
+  ← Outer margin: from page edge to border
+  → Inner padding: from border to content
+```
+
 ## Tips for Best Results
 
-1. **For text-heavy documents**: Use `--quality original` to preserve vector text
+1. **For text-heavy documents**: Use `--quality original` (default) to preserve vector text
 2. **For image-heavy documents**: Use `--quality high --dpi 600` for best results
 3. **For consistent layouts**: Keep aspect ratio preservation enabled (default)
 4. **For print preparation**: Use larger outer margins (1.0" or more)
 5. **For digital viewing**: Use smaller margins (0.25" - 0.5")
+6. **Review settings first**: The preview shows exactly how borders will look before processing
 
-## Output Example
 
-```
-============================================================
-📋 BORDER SETTINGS TO BE APPLIED
-============================================================
 
-📁 Files:
-  • Input:  document.pdf (12.3MB)
-  • Output: output.pdf
+## What's New
 
-📐 Spacing:
-  • Outer margin:  0.50 inch (36.0 pts)
-  • Inner padding: 0.25 inch (18.0 pts)
-  • Total spacing: 0.75 inch
-
-🎨 Border Style:
-  • Width: 1 pts
-  • Color: RGB(0, 0, 0)
-
-⚙️  Quality Settings:
-  • Quality mode: HIGH
-  • DPI: 300
-  • Preserve aspect ratio: Yes
-
-============================================================
-
-❓ Do you want to proceed with these settings?
-   Press Enter to continue, or Ctrl+C to cancel...
-
-📄 Reading 'document.pdf'...
-Processing 'document.pdf' (100 pages, 12.3MB)
-Quality mode: HIGH | DPI: 300
-[########################################] 100/100 pages
-💾 Saving PDF with quality preservation...
-✅ Saved 'output.pdf' (13.1MB)
-⏱️  Processing time: 15.23 seconds
-```
+### Latest Features
+- **Visual Preview**: See ASCII art representation of border layout before processing
+- **Settings Confirmation**: Review all settings upfront with option to cancel
+- **Default Quality Change**: `original` mode is now default for best text preservation
+- **Enhanced Progress Display**: Shows quality mode and DPI during processing
+- **Better Error Handling**: Clear messages for missing dependencies
 
 ## Troubleshooting
 
@@ -248,6 +333,7 @@ If you see a warning about PyMuPDF, install it for better quality:
 ```bash
 pip install pymupdf
 ```
+The tool will still work using the standard mode, but with basic quality preservation.
 
 ### Memory Issues with Large PDFs
 For very large PDFs, use medium quality:
@@ -261,6 +347,36 @@ Use standard mode for faster processing:
 python border_scale.py input.pdf output.pdf --quality standard
 ```
 
+### Preview Not Displaying Correctly
+If the ASCII preview appears garbled, ensure your terminal supports UTF-8 encoding and has sufficient width (at least 80 characters).
+
+## Requirements
+
+### Minimum Requirements
+- Python 3.6+
+- pypdf
+- reportlab
+
+### Recommended Requirements
+- Python 3.8+
+- pypdf
+- reportlab
+- pymupdf (for high-quality modes)
+
+## Performance Notes
+
+- **Processing Speed**: Varies by quality mode and file size
+  - Original: Fast (vector preservation)
+  - High: Slower (rasterization at high DPI)
+  - Medium: Moderate
+  - Standard: Fast (basic processing)
+
+- **File Size Changes**:
+  - Original mode: Usually maintains similar file size
+  - High mode: May increase file size significantly
+  - Medium mode: Moderate increase
+  - Standard mode: Minimal change
+
 ## License
 
 MIT License - Feel free to use and modify as needed.
@@ -268,12 +384,14 @@ MIT License - Feel free to use and modify as needed.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
+
+## Changelog
+
+### Version 2.0
+- Changed default quality mode to `original` for better text preservation
+- Added visual ASCII preview of border layout
+- Added settings confirmation prompt before processing
+- Improved progress display with quality mode information
+- Fixed formatting issues in terminal output
+- Enhanced error handling and dependency checking
 ```
-
-The script now:
-1. Shows all settings BEFORE processing starts
-2. Asks for confirmation (can be skipped with `-y` flag)
-3. Fixed the PyMuPDF save options error
-4. Includes a comprehensive README with all possible commands and explanations
-
-The settings preview shows everything that will be applied, making it clear what the script will do before it starts processing!
