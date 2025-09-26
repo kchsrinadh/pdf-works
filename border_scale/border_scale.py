@@ -57,8 +57,121 @@ def get_file_size_str(file_path):
         size /= 1024.0
     return f"{size:.1f}TB"
 
+def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_rgb, preserve_ratio=True):
+    """
+    Create an ASCII art preview of how the border will look
+    
+    Args:
+        outer_margin_ratio: Outer margin as ratio of page size (0-1)
+        inner_padding_ratio: Inner padding as ratio of page size (0-1)
+        border_color_rgb: RGB tuple for color display
+        preserve_ratio: Whether aspect ratio is preserved
+    """
+    
+    # Terminal dimensions for the preview (characters)
+    preview_width = 60
+    preview_height = 30
+    
+    # Calculate positions based on ratios
+    outer_start = int(outer_margin_ratio * min(preview_width, preview_height))
+    inner_start = outer_start + int(inner_padding_ratio * min(preview_width, preview_height))
+    
+    # Ensure minimum sizes
+    outer_start = max(2, min(outer_start, 8))
+    inner_start = outer_start + max(1, min(int(inner_padding_ratio * 20), 4))
+    
+    # Create the preview
+    lines = []
+    
+    # Color indicator
+    r, g, b = [int(c * 255) for c in border_color_rgb]
+    if r > 200 and g < 100 and b < 100:
+        color_name = "Red"
+        border_char = "█"
+    elif r < 100 and g > 200 and b < 100:
+        color_name = "Green"
+        border_char = "█"
+    elif r < 100 and g < 100 and b > 200:
+        color_name = "Blue"
+        border_char = "█"
+    elif r > 200 and g > 200 and b > 200:
+        color_name = "White"
+        border_char = "░"
+    elif r < 50 and g < 50 and b < 50:
+        color_name = "Black"
+        border_char = "█"
+    else:
+        color_name = f"RGB({r},{g},{b})"
+        border_char = "█"
+    
+    # Build the preview line by line
+    for y in range(preview_height):
+        line = []
+        for x in range(preview_width):
+            # Determine what to display at this position
+            if y == 0 or y == preview_height - 1:
+                # Top/bottom page edge
+                line.append("─")
+            elif x == 0 or x == preview_width - 1:
+                # Left/right page edge
+                line.append("│")
+            elif (y == outer_start or y == preview_height - outer_start - 1) and \
+                 (outer_start <= x < preview_width - outer_start):
+                # Horizontal border lines
+                line.append(border_char)
+            elif (x == outer_start or x == preview_width - outer_start - 1) and \
+                 (outer_start <= y < preview_height - outer_start):
+                # Vertical border lines
+                line.append(border_char)
+            elif (y == inner_start or y == preview_height - inner_start - 1) and \
+                 (inner_start <= x < preview_width - inner_start):
+                # Content area boundary (top/bottom)
+                line.append("·")
+            elif (x == inner_start or x == preview_width - inner_start - 1) and \
+                 (inner_start <= y < preview_height - inner_start):
+                # Content area boundary (left/right)
+                line.append("·")
+            elif inner_start < y < preview_height - inner_start - 1 and \
+                 inner_start < x < preview_width - inner_start - 1:
+                # Content area
+                if y == preview_height // 2:
+                    content_text = "PDF CONTENT"
+                    text_start = (preview_width - len(content_text)) // 2
+                    if text_start <= x < text_start + len(content_text):
+                        line.append(content_text[x - text_start])
+                    else:
+                        line.append(" ")
+                elif y == preview_height // 2 + 1:
+                    content_text = "← scaled →" if not preserve_ratio else "← preserved →"
+                    text_start = (preview_width - len(content_text)) // 2
+                    if text_start <= x < text_start + len(content_text):
+                        line.append(content_text[x - text_start])
+                    else:
+                        line.append(" ")
+                else:
+                    line.append(" ")
+            else:
+                # Empty space between margins
+                line.append(" ")
+        
+        lines.append("".join(line))
+    
+    # Join lines with proper newlines
+    preview_text = "\n📐 PREVIEW OF BORDER LAYOUT:\n\n"
+    preview_text += "\n".join(lines)  # Fixed: join with newlines instead of empty string
+    
+    # Add legend
+    preview_text += "\n\nLEGEND:\n"
+    preview_text += f"  ─│ Page edges\n"
+    preview_text += f"  {border_char} Border ({color_name})\n"
+    preview_text += f"  · Content area boundary\n"
+    preview_text += f"  ← Outer margin: from page edge to border\n"
+    preview_text += f"  → Inner padding: from border to content\n"
+    
+    return preview_text
+
 def display_settings(args, outer_margin_pts, inner_padding_pts, border_color):
-    """Display the settings that will be applied"""
+    """Display the settings that will be applied with visual preview"""
     print("\n" + "="*60)
     print("📋 BORDER SETTINGS TO BE APPLIED")
     print("="*60)
@@ -84,6 +197,32 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color):
     print(f"  • Preserve aspect ratio: {'Yes' if not args.no_preserve_ratio else 'No'}")
     
     print("\n" + "="*60)
+    
+    # Get first page dimensions for ratio calculation
+    try:
+        reader = PdfReader(args.input_pdf)
+        if len(reader.pages) > 0:
+            page = reader.pages[0]
+            page_width = float(page.mediabox.width)
+            page_height = float(page.mediabox.height)
+            
+            # Calculate ratios for preview
+            outer_ratio = outer_margin_pts / min(page_width, page_height)
+            inner_ratio = inner_padding_pts / min(page_width, page_height)
+            
+            # Display visual preview
+            preview = create_visual_preview(
+                outer_ratio, 
+                inner_ratio, 
+                border_color,
+                preserve_ratio=not args.no_preserve_ratio
+            )
+            print(preview)
+    except Exception as e:
+        # If preview fails, continue without it
+        print(f"(Preview generation skipped: {str(e)})")
+    
+    print("\n" + "="*60)
 
 def confirm_proceed():
     """Ask user to confirm before proceeding"""
@@ -98,7 +237,7 @@ def confirm_proceed():
 
 def process_pdf_high_quality(input_path, output_path, outer_margin, inner_padding, 
                             border_width, border_color, preserve_ratio=True, 
-                            quality='high', dpi=300):
+                            quality='original', dpi=300):
     """
     Process PDF using PyMuPDF for better quality preservation
     """
@@ -114,7 +253,11 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
     input_size = get_file_size_str(input_path)
     
     print(f"Processing '{input_path}' ({total_pages} pages, {input_size})")
-    print(f"Quality mode: {quality.upper()} | DPI: {dpi}")
+    print(f"Quality mode: {quality.upper()}", end="")
+    if quality in ['high', 'medium']:
+        print(f" | DPI: {dpi}")
+    else:
+        print()
     
     # Create progress bar
     progress = ProgressBar(total_pages, width=40, suffix='pages')
@@ -252,7 +395,7 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
     input_size = get_file_size_str(input_path)
     
     print(f"Processing '{input_path}' ({total_pages} pages, {input_size})")
-    print("Using standard quality mode (pypdf)")
+    print("Quality mode: STANDARD (pypdf)")
     
     progress = ProgressBar(total_pages, width=40, suffix='pages')
     
@@ -337,13 +480,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with high quality
+  # Basic usage with original quality (default)
   python border_scale.py input.pdf output.pdf
   
-  # Maximum quality preservation (keeps vectors as vectors)
-  python border_scale.py input.pdf output.pdf --quality original
-  
-  # High quality with custom DPI
+  # High-quality rendering for mixed content
   python border_scale.py input.pdf output.pdf --quality high --dpi 600
   
   # Custom margins
@@ -353,8 +493,8 @@ Examples:
   python border_scale.py input.pdf output.pdf -y
 
 Quality Modes:
-  - original: Preserves vector graphics as vectors (best for text/drawings)
-  - high: High-quality rendering at specified DPI (default 300)
+  - original: Preserves vector graphics as vectors (default, best for text/drawings)
+  - high: High-quality rendering at specified DPI (best for mixed content)
   - medium: Balanced quality and file size
   - standard: Use pypdf method (fallback)
         """
@@ -377,10 +517,10 @@ Quality Modes:
     parser.add_argument('--border-color', type=str, default='0,0,0',
                        help='Border color as R,G,B (0-255 each, default: "0,0,0" for black)')
     
-    # Quality options
+    # Quality options - ORIGINAL is now default
     parser.add_argument('--quality', choices=['original', 'high', 'medium', 'standard'], 
-                       default='high',
-                       help='Quality preservation mode (default: high)')
+                       default='original',
+                       help='Quality preservation mode (default: original)')
     parser.add_argument('--dpi', type=int, default=300,
                        help='DPI for rendering when using high/medium quality (default: 300)')
     
@@ -413,7 +553,7 @@ Quality Modes:
     # Parse border color
     border_color = parse_color(args.border_color)
     
-    # Display settings
+    # Display settings with visual preview
     display_settings(args, outer_margin_pts, inner_padding_pts, border_color)
     
     # Ask for confirmation unless -y flag is used
