@@ -14,6 +14,20 @@ from reportlab.lib.units import inch, mm
 import io
 import os
 import time
+import re
+
+# Platform-specific imports for key handling
+if sys.platform == 'win32':
+    try:
+        import msvcrt
+    except ImportError:
+        pass
+else:
+    try:
+        import termios
+        import tty
+    except ImportError:
+        pass
 
 try:
     import fitz  # PyMuPDF for better quality handling
@@ -36,7 +50,7 @@ class ProgressBar:
         self.display()
     
     def display(self):
-        percent = self.current / self.total
+        percent = self.current / self.total if self.total > 0 else 1
         filled = int(self.width * percent)
         bar = '#' * filled + '-' * (self.width - filled)
         
@@ -56,6 +70,52 @@ def get_file_size_str(file_path):
             return f"{size:.1f}{unit}"
         size /= 1024.0
     return f"{size:.1f}TB"
+
+def parse_page_range(page_range_str, total_pages):
+    """
+    Parse page range string and return list of page numbers (0-indexed)
+    
+    Examples:
+        "1-5" -> [0, 1, 2, 3, 4]
+        "1,3,5" -> [0, 2, 4]
+        "1-3,7,9-10" -> [0, 1, 2, 6, 8, 9]
+        "all" or None -> all pages
+    """
+    if not page_range_str or page_range_str.lower() == 'all':
+        return list(range(total_pages))
+    
+    pages = set()
+    
+    # Split by comma
+    parts = page_range_str.split(',')
+    
+    for part in parts:
+        part = part.strip()
+        
+        # Check if it's a range (e.g., "1-5")
+        if '-' in part:
+            try:
+                start, end = part.split('-')
+                start = int(start.strip())
+                end = int(end.strip())
+                
+                # Convert to 0-indexed and add to set
+                for page in range(max(1, start), min(total_pages + 1, end + 1)):
+                    pages.add(page - 1)
+            except ValueError:
+                print(f"⚠️  Invalid page range: {part}")
+        else:
+            # Single page number
+            try:
+                page_num = int(part)
+                if 1 <= page_num <= total_pages:
+                    pages.add(page_num - 1)
+                else:
+                    print(f"⚠️  Page {page_num} out of range (1-{total_pages})")
+            except ValueError:
+                print(f"⚠️  Invalid page number: {part}")
+    
+    return sorted(list(pages))
 
 def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_rgb, preserve_ratio=True):
     """
@@ -158,7 +218,7 @@ def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_
     
     # Join lines with proper newlines
     preview_text = "\n📐 PREVIEW OF BORDER LAYOUT:\n\n"
-    preview_text += "\n".join(lines)  # Fixed: join with newlines instead of empty string
+    preview_text += "\n".join(lines)
     
     # Add legend
     preview_text += "\n\nLEGEND:\n"
@@ -170,7 +230,7 @@ def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_
     
     return preview_text
 
-def display_settings(args, outer_margin_pts, inner_padding_pts, border_color):
+def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, page_indices, total_pages):
     """Display the settings that will be applied with visual preview"""
     print("\n" + "="*60)
     print("📋 BORDER SETTINGS TO BE APPLIED")
@@ -179,6 +239,20 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color):
     print(f"\n📁 Files:")
     print(f"  • Input:  {args.input_pdf} ({get_file_size_str(args.input_pdf)})")
     print(f"  • Output: {args.output_pdf}")
+    
+    # Display page range
+    print(f"\n📄 Pages:")
+    if len(page_indices) == total_pages:
+        print(f"  • Processing: All pages (1-{total_pages})")
+    else:
+        # Format page ranges for display
+        page_nums = [p + 1 for p in page_indices]  # Convert to 1-indexed
+        if len(page_nums) <= 10:
+            print(f"  • Processing: {', '.join(map(str, page_nums))} ({len(page_nums)} of {total_pages} pages)")
+        else:
+            # Show first and last few pages
+            display_pages = page_nums[:3] + ['...'] + page_nums[-3:]
+            print(f"  • Processing: {', '.join(map(str, display_pages))} ({len(page_nums)} of {total_pages} pages)")
     
     print(f"\n📐 Spacing:")
     print(f"  • Outer margin:  {args.outer:.2f} {args.unit} ({outer_margin_pts:.1f} pts)")
@@ -202,7 +276,9 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color):
     try:
         reader = PdfReader(args.input_pdf)
         if len(reader.pages) > 0:
-            page = reader.pages[0]
+            # Use the first page from the selected range for preview
+            first_page_idx = page_indices[0] if page_indices else 0
+            page = reader.pages[first_page_idx]
             page_width = float(page.mediabox.width)
             page_height = float(page.mediabox.height)
             
@@ -227,17 +303,73 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color):
 def confirm_proceed():
     """Ask user to confirm before proceeding"""
     print("\n❓ Do you want to proceed with these settings?")
-    print("   Press Enter to continue, or Ctrl+C to cancel...")
+    print("   • Press ENTER to continue")
+    print("   • Press any other key to cancel")
+    print()
+    
     try:
-        input()
-        return True
+        # For Windows
+        if sys.platform == 'win32':
+            import msvcrt
+            print("   Waiting for input...", end='', flush=True)
+            key = msvcrt.getch()
+            print()  # New line after input
+            
+            # Check if Enter was pressed (carriage return)
+            if key in [b'\r', b'\n']:
+                print("✅ Proceeding with processing...")
+                return True
+            else:
+                print("❌ Operation cancelled")
+                return False
+        
+        # For Unix/Linux/Mac
+        else:
+            import termios, tty
+            
+            # Save terminal settings
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            
+            try:
+                # Set terminal to raw mode to read single character
+                tty.setraw(sys.stdin.fileno())
+                print("   Waiting for input...", end='', flush=True)
+                key = sys.stdin.read(1)
+                
+                # Restore terminal settings before printing
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                print()  # New line after input
+                
+                # Check if Enter was pressed
+                if key == '\r' or key == '\n':
+                    print("✅ Proceeding with processing...")
+                    return True
+                else:
+                    print("❌ Operation cancelled")
+                    return False
+                    
+            finally:
+                # Make sure terminal settings are restored
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                
     except KeyboardInterrupt:
-        print("\n\n⚠️  Operation cancelled by user")
+        print("\n❌ Operation cancelled (Ctrl+C)")
         return False
+    except Exception as e:
+        # Fallback to simple input() if special key handling fails
+        print("\n   (Press Enter to continue, Ctrl+C to cancel)")
+        try:
+            input()
+            print("✅ Proceeding with processing...")
+            return True
+        except KeyboardInterrupt:
+            print("\n❌ Operation cancelled")
+            return False
 
 def process_pdf_high_quality(input_path, output_path, outer_margin, inner_padding, 
-                            border_width, border_color, preserve_ratio=True, 
-                            quality='original', dpi=300):
+                            border_width, border_color, page_indices=None,
+                            preserve_ratio=True, quality='original', dpi=300):
     """
     Process PDF using PyMuPDF for better quality preservation
     """
@@ -250,9 +382,14 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
     output_doc = fitz.open()
     
     total_pages = len(doc)
+    
+    # Use all pages if none specified
+    if page_indices is None:
+        page_indices = list(range(total_pages))
+    
     input_size = get_file_size_str(input_path)
     
-    print(f"Processing '{input_path}' ({total_pages} pages, {input_size})")
+    print(f"Processing '{input_path}' ({len(page_indices)} of {total_pages} pages, {input_size})")
     print(f"Quality mode: {quality.upper()}", end="")
     if quality in ['high', 'medium']:
         print(f" | DPI: {dpi}")
@@ -260,10 +397,10 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
         print()
     
     # Create progress bar
-    progress = ProgressBar(total_pages, width=40, suffix='pages')
+    progress = ProgressBar(len(page_indices), width=40, suffix='pages')
     
-    for page_num in range(total_pages):
-        progress.update(page_num + 1)
+    for idx, page_num in enumerate(page_indices):
+        progress.update(idx + 1)
         
         # Get the page
         page = doc[page_num]
@@ -375,7 +512,7 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
     print(f"⏱️  Processing time: {processing_time:.2f} seconds")
 
 def process_pdf_standard(input_path, output_path, outer_margin, inner_padding, 
-                        border_width, border_color, preserve_ratio=True):
+                        border_width, border_color, page_indices=None, preserve_ratio=True):
     """
     Standard processing using pypdf (fallback method)
     """
@@ -392,15 +529,22 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
     writer.compress_identical_objects(remove_use_as=True)
     
     total_pages = len(reader.pages)
+    
+    # Use all pages if none specified
+    if page_indices is None:
+        page_indices = list(range(total_pages))
+    
     input_size = get_file_size_str(input_path)
     
-    print(f"Processing '{input_path}' ({total_pages} pages, {input_size})")
+    print(f"Processing '{input_path}' ({len(page_indices)} of {total_pages} pages, {input_size})")
     print("Quality mode: STANDARD (pypdf)")
     
-    progress = ProgressBar(total_pages, width=40, suffix='pages')
+    progress = ProgressBar(len(page_indices), width=40, suffix='pages')
     
-    for page_num, page in enumerate(reader.pages):
-        progress.update(page_num + 1)
+    for idx, page_num in enumerate(page_indices):
+        progress.update(idx + 1)
+        
+        page = reader.pages[page_num]
         
         # Get original page dimensions
         page_box = page.mediabox
@@ -483,6 +627,9 @@ Examples:
   # Basic usage with original quality (default)
   python border_scale.py input.pdf output.pdf
   
+  # Process specific pages only
+  python border_scale.py input.pdf output.pdf --pages 1-5,10,15-20
+  
   # High-quality rendering for mixed content
   python border_scale.py input.pdf output.pdf --quality high --dpi 600
   
@@ -491,6 +638,12 @@ Examples:
   
   # Skip confirmation prompt
   python border_scale.py input.pdf output.pdf -y
+
+Page Range Examples:
+  --pages 1-5        Process pages 1 through 5
+  --pages 1,3,5      Process pages 1, 3, and 5
+  --pages 1-3,7-10   Process pages 1-3 and 7-10
+  --pages all        Process all pages (default)
 
 Quality Modes:
   - original: Preserves vector graphics as vectors (default, best for text/drawings)
@@ -502,6 +655,10 @@ Quality Modes:
     
     parser.add_argument('input_pdf', help='Input PDF file path')
     parser.add_argument('output_pdf', help='Output PDF file path')
+    
+    # Page range option
+    parser.add_argument('--pages', '--page-range', type=str, default='all',
+                       help='Page range to process (e.g., "1-5,10,15-20" or "all")')
     
     # Spacing options
     parser.add_argument('--outer', '--outer-margin', type=float, default=0.5,
@@ -539,6 +696,20 @@ Quality Modes:
         print(f"❌ Error: Input file '{args.input_pdf}' not found")
         sys.exit(1)
     
+    # Get total pages and parse page range
+    try:
+        reader = PdfReader(args.input_pdf)
+        total_pages = len(reader.pages)
+        page_indices = parse_page_range(args.pages, total_pages)
+        
+        if not page_indices:
+            print(f"❌ Error: No valid pages specified in range '{args.pages}'")
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"❌ Error reading PDF: {e}")
+        sys.exit(1)
+    
     # Convert units to points
     unit_multipliers = {
         'inch': 72,
@@ -554,7 +725,7 @@ Quality Modes:
     border_color = parse_color(args.border_color)
     
     # Display settings with visual preview
-    display_settings(args, outer_margin_pts, inner_padding_pts, border_color)
+    display_settings(args, outer_margin_pts, inner_padding_pts, border_color, page_indices, total_pages)
     
     # Ask for confirmation unless -y flag is used
     if not args.yes:
@@ -571,6 +742,7 @@ Quality Modes:
                 inner_padding_pts,
                 args.border_width,
                 border_color,
+                page_indices=page_indices,
                 preserve_ratio=not args.no_preserve_ratio,
                 quality=args.quality,
                 dpi=args.dpi
@@ -586,6 +758,7 @@ Quality Modes:
                 inner_padding_pts,
                 args.border_width,
                 border_color,
+                page_indices=page_indices,
                 preserve_ratio=not args.no_preserve_ratio
             )
             
