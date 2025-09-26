@@ -1,24 +1,27 @@
+
 # PDF Works
 
 A collection of Python tools for PDF manipulation and processing.
 
 ## Available Tools
 
-### [Border Scale](./border_scale/)
-Add customizable borders to PDF pages while preserving content quality.
+### [BoundaryBox](./boundary-box/)
+Add customizable borders and margins to PDF pages while preserving content quality.
 
 ```bash
-cd border_scale
-python border_scale.py input.pdf output.pdf
+cd boundary-box
+python boundary-box.py input.pdf output.pdf
 ```
 
 Features:
 - Adjustable outer margins and inner padding
+- Multiple border styles (rounded, solid, dashed, dotted)
 - Visual preview before processing
 - Page range selection
 - Multiple quality modes
+- YAML configuration support
 
-[Full documentation →](./border_scale/readme.md)
+[Full documentation →](./boundary-box/README.md)
 
 ---
 
@@ -27,11 +30,11 @@ Features:
 ## Installation
 
 ```bash
-# Basic dependencies
-pip install pypdf reportlab
+# Navigate to specific tool directory
+cd boundary-box
 
-# Optional for better quality
-pip install pymupdf
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ## Getting Started
@@ -44,21 +47,28 @@ pip install pymupdf
 
 2. Navigate to the tool you want to use
    ```bash
-   cd border_scale
+   cd boundary-box
    ```
 
-3. Run the tool (use --help for options)
+3. Install requirements
    ```bash
-   python border_scale.py input.pdf output.pdf --help
+   pip install -r requirements.txt
+   ```
+
+4. Run the tool (use --help for options)
+   ```bash
+   python boundary-box.py input.pdf output.pdf --help
    ```
 
 ## Repository Structure
 
 ```
 pdf-works/
-├── border_scale/
-│   ├── border_scale.py
-│   ├── readme.md
+├── boundary-box/
+│   ├── boundary-box.py
+│   ├── config.yaml
+│   ├── requirements.txt
+│   ├── README.md
 │   └── example files
 └── README.md
 ```

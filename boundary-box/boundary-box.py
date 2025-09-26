@@ -15,6 +15,8 @@ import io
 import os
 import time
 import re
+import yaml
+import math
 
 # Platform-specific imports for key handling
 if sys.platform == 'win32':
@@ -34,6 +36,44 @@ try:
     PYMUPDF_AVAILABLE = True
 except ImportError:
     PYMUPDF_AVAILABLE = False
+
+def load_config(config_path='config.yaml'):
+    """Load configuration from YAML file"""
+    default_config = {
+        'border': {
+            'style': 'rounded',
+            'width': 1,
+            'color': '0,0,0',
+            'corner_radius': 10
+        },
+        'spacing': {
+            'outer_margin': 0.5,
+            'inner_padding': 0.25,
+            'unit': 'inch'
+        },
+        'quality': {
+            'mode': 'original',
+            'dpi': 300,
+            'preserve_ratio': True
+        },
+        'processing': {
+            'pages': 'all',
+            'confirm': True
+        }
+    }
+    
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                user_config = yaml.safe_load(f)
+                # Simply use the user config if it exists
+                if user_config:
+                    return user_config
+        except Exception as e:
+            print(f"⚠️  Error loading config file: {e}")
+            print("   Using default configuration")
+    
+    return default_config
 
 class ProgressBar:
     """Simple progress bar for console output"""
@@ -117,15 +157,10 @@ def parse_page_range(page_range_str, total_pages):
     
     return sorted(list(pages))
 
-def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_rgb, preserve_ratio=True):
+def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_rgb, 
+                         border_style='solid', corner_radius_ratio=0, preserve_ratio=True):
     """
     Create an ASCII art preview of how the border will look
-    
-    Args:
-        outer_margin_ratio: Outer margin as ratio of page size (0-1)
-        inner_padding_ratio: Inner padding as ratio of page size (0-1)
-        border_color_rgb: RGB tuple for color display
-        preserve_ratio: Whether aspect ratio is preserved
     """
     
     # Terminal dimensions for the preview (characters)
@@ -164,6 +199,19 @@ def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_
         color_name = f"RGB({r},{g},{b})"
         border_char = "█"
     
+    # Different characters for different styles
+    if border_style == 'dashed':
+        h_border = "─ "
+        v_border = "┆"
+    elif border_style == 'dotted':
+        h_border = "·"
+        v_border = "·"
+    elif border_style == 'rounded':
+        corner_chars = ['╭', '╮', '╰', '╯']
+    else:
+        h_border = border_char
+        v_border = border_char
+    
     # Build the preview line by line
     for y in range(preview_height):
         line = []
@@ -175,14 +223,35 @@ def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_
             elif x == 0 or x == preview_width - 1:
                 # Left/right page edge
                 line.append("│")
+            elif border_style == 'rounded' and (
+                (y == outer_start and x == outer_start) or
+                (y == outer_start and x == preview_width - outer_start - 1) or
+                (y == preview_height - outer_start - 1 and x == outer_start) or
+                (y == preview_height - outer_start - 1 and x == preview_width - outer_start - 1)
+            ):
+                # Rounded corners
+                if y == outer_start and x == outer_start:
+                    line.append('╭')
+                elif y == outer_start and x == preview_width - outer_start - 1:
+                    line.append('╮')
+                elif y == preview_height - outer_start - 1 and x == outer_start:
+                    line.append('╰')
+                else:
+                    line.append('╯')
             elif (y == outer_start or y == preview_height - outer_start - 1) and \
-                 (outer_start <= x < preview_width - outer_start):
+                 (outer_start < x < preview_width - outer_start - 1):
                 # Horizontal border lines
-                line.append(border_char)
+                if border_style in ['dashed', 'dotted']:
+                    line.append(h_border if x % 2 == 0 else " ")
+                else:
+                    line.append(border_char)
             elif (x == outer_start or x == preview_width - outer_start - 1) and \
-                 (outer_start <= y < preview_height - outer_start):
+                 (outer_start < y < preview_height - outer_start - 1):
                 # Vertical border lines
-                line.append(border_char)
+                if border_style in ['dashed', 'dotted']:
+                    line.append(v_border if y % 2 == 0 else " ")
+                else:
+                    line.append(border_char)
             elif (y == inner_start or y == preview_height - inner_start - 1) and \
                  (inner_start <= x < preview_width - inner_start):
                 # Content area boundary (top/bottom)
@@ -223,7 +292,10 @@ def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_
     # Add legend
     preview_text += "\n\nLEGEND:\n"
     preview_text += f"  ─│ Page edges\n"
-    preview_text += f"  {border_char} Border ({color_name})\n"
+    if border_style == 'rounded':
+        preview_text += f"  {border_char} Border ({color_name}, rounded corners)\n"
+    else:
+        preview_text += f"  {border_char} Border ({color_name}, {border_style})\n"
     preview_text += f"  · Content area boundary\n"
     preview_text += f"  ← Outer margin: from page edge to border\n"
     preview_text += f"  → Inner padding: from border to content\n"
@@ -260,7 +332,10 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, pa
     print(f"  • Total spacing: {args.outer + args.inner:.2f} {args.unit}")
     
     print(f"\n🎨 Border Style:")
+    print(f"  • Style: {args.border_style.capitalize()}")
     print(f"  • Width: {args.border_width} pts")
+    if args.border_style == 'rounded':
+        print(f"  • Corner radius: {args.corner_radius} pts")
     color_rgb = tuple(int(c * 255) for c in border_color)
     print(f"  • Color: RGB{color_rgb}")
     
@@ -285,12 +360,15 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, pa
             # Calculate ratios for preview
             outer_ratio = outer_margin_pts / min(page_width, page_height)
             inner_ratio = inner_padding_pts / min(page_width, page_height)
+            corner_ratio = args.corner_radius / min(page_width, page_height) if args.border_style == 'rounded' else 0
             
             # Display visual preview
             preview = create_visual_preview(
                 outer_ratio, 
                 inner_ratio, 
                 border_color,
+                border_style=args.border_style,
+                corner_radius_ratio=corner_ratio,
                 preserve_ratio=not args.no_preserve_ratio
             )
             print(preview)
@@ -368,7 +446,8 @@ def confirm_proceed():
             return False
 
 def process_pdf_high_quality(input_path, output_path, outer_margin, inner_padding, 
-                            border_width, border_color, page_indices=None,
+                            border_width, border_color, border_style='solid',
+                            corner_radius=0, page_indices=None,
                             preserve_ratio=True, quality='original', dpi=300):
     """
     Process PDF using PyMuPDF for better quality preservation
@@ -422,13 +501,12 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
         if preserve_ratio:
             scale_factor = min(scale_x, scale_y)
         else:
-            scale_factor = scale_x  # Will handle x/y separately
+            scale_factor = scale_x
         
         # Determine rendering quality
         if quality == 'high':
             mat = fitz.Matrix(scale_factor * (dpi/72), scale_factor * (dpi/72))
         elif quality == 'original':
-            # Keep original without rasterization
             mat = fitz.Matrix(scale_factor, scale_factor)
         else:  # medium
             mat = fitz.Matrix(scale_factor * 2, scale_factor * 2)
@@ -474,15 +552,93 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
         # Convert border color from 0-1 to 0-255
         border_rgb = tuple(int(c * 255) for c in border_color)
         
-        # Draw rectangle border
-        border_rect = fitz.Rect(
-            outer_margin,
-            outer_margin,
-            orig_width - outer_margin,
-            orig_height - outer_margin
-        )
+        # Rectangle dimensions
+        x0 = outer_margin
+        y0 = outer_margin
+        x1 = orig_width - outer_margin
+        y1 = orig_height - outer_margin
         
-        shape.draw_rect(border_rect)
+        if border_style == 'rounded' and corner_radius > 0:
+            # Limit corner radius to half the smaller dimension
+            max_radius = min((x1 - x0) / 2, (y1 - y0) / 2, 50)  # Also limit to 50 points max
+            actual_radius = min(corner_radius, max_radius)
+            
+            # Draw rounded rectangle using lines and arcs
+            # We'll approximate rounded corners with multiple small lines
+            
+            # Top line
+            shape.draw_line(fitz.Point(x0 + actual_radius, y0), 
+                          fitz.Point(x1 - actual_radius, y0))
+            
+            # Top-right corner arc
+            center = fitz.Point(x1 - actual_radius, y0 + actual_radius)
+            for i in range(10):
+                angle1 = -90 + i * 9
+                angle2 = -90 + (i + 1) * 9
+                rad1 = math.radians(angle1)
+                rad2 = math.radians(angle2)
+                p1 = fitz.Point(center.x + actual_radius * math.cos(rad1),
+                              center.y + actual_radius * math.sin(rad1))
+                p2 = fitz.Point(center.x + actual_radius * math.cos(rad2),
+                              center.y + actual_radius * math.sin(rad2))
+                shape.draw_line(p1, p2)
+            
+            # Right line
+            shape.draw_line(fitz.Point(x1, y0 + actual_radius), 
+                          fitz.Point(x1, y1 - actual_radius))
+            
+            # Bottom-right corner arc
+            center = fitz.Point(x1 - actual_radius, y1 - actual_radius)
+            for i in range(10):
+                angle1 = 0 + i * 9
+                angle2 = 0 + (i + 1) * 9
+                rad1 = math.radians(angle1)
+                rad2 = math.radians(angle2)
+                p1 = fitz.Point(center.x + actual_radius * math.cos(rad1),
+                              center.y + actual_radius * math.sin(rad1))
+                p2 = fitz.Point(center.x + actual_radius * math.cos(rad2),
+                              center.y + actual_radius * math.sin(rad2))
+                shape.draw_line(p1, p2)
+            
+            # Bottom line
+            shape.draw_line(fitz.Point(x1 - actual_radius, y1), 
+                          fitz.Point(x0 + actual_radius, y1))
+            
+            # Bottom-left corner arc
+            center = fitz.Point(x0 + actual_radius, y1 - actual_radius)
+            for i in range(10):
+                angle1 = 90 + i * 9
+                angle2 = 90 + (i + 1) * 9
+                rad1 = math.radians(angle1)
+                rad2 = math.radians(angle2)
+                p1 = fitz.Point(center.x + actual_radius * math.cos(rad1),
+                              center.y + actual_radius * math.sin(rad1))
+                p2 = fitz.Point(center.x + actual_radius * math.cos(rad2),
+                              center.y + actual_radius * math.sin(rad2))
+                shape.draw_line(p1, p2)
+            
+            # Left line
+            shape.draw_line(fitz.Point(x0, y1 - actual_radius), 
+                          fitz.Point(x0, y0 + actual_radius))
+            
+            # Top-left corner arc
+            center = fitz.Point(x0 + actual_radius, y0 + actual_radius)
+            for i in range(10):
+                angle1 = 180 + i * 9
+                angle2 = 180 + (i + 1) * 9
+                rad1 = math.radians(angle1)
+                rad2 = math.radians(angle2)
+                p1 = fitz.Point(center.x + actual_radius * math.cos(rad1),
+                              center.y + actual_radius * math.sin(rad1))
+                p2 = fitz.Point(center.x + actual_radius * math.cos(rad2),
+                              center.y + actual_radius * math.sin(rad2))
+                shape.draw_line(p1, p2)
+            
+        else:  # solid, dashed, or dotted
+            # Draw rectangle border
+            border_rect = fitz.Rect(x0, y0, x1, y1)
+            shape.draw_rect(border_rect)
+        
         shape.finish(width=border_width, color=border_rgb, fill=None)
         shape.commit()
     
@@ -512,7 +668,8 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
     print(f"⏱️  Processing time: {processing_time:.2f} seconds")
 
 def process_pdf_standard(input_path, output_path, outer_margin, inner_padding, 
-                        border_width, border_color, page_indices=None, preserve_ratio=True):
+                        border_width, border_color, border_style='solid',
+                        corner_radius=0, page_indices=None, preserve_ratio=True):
     """
     Standard processing using pypdf (fallback method)
     """
@@ -579,10 +736,37 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
         c = canvas.Canvas(packet, pagesize=(orig_width, orig_height))
         c.setStrokeColorRGB(*border_color)
         c.setLineWidth(border_width)
-        c.rect(outer_margin, outer_margin, 
-               orig_width - 2 * outer_margin, 
-               orig_height - 2 * outer_margin,
-               stroke=1, fill=0)
+        
+        if border_style == 'rounded' and corner_radius > 0:
+            # Draw rounded rectangle
+            max_radius = min((orig_width - 2 * outer_margin) / 2, 
+                           (orig_height - 2 * outer_margin) / 2, 50)
+            actual_radius = min(corner_radius, max_radius)
+            
+            c.roundRect(outer_margin, outer_margin, 
+                       orig_width - 2 * outer_margin, 
+                       orig_height - 2 * outer_margin,
+                       actual_radius, stroke=1, fill=0)
+                       
+        elif border_style == 'dashed':
+            c.setDash([6, 3])  # 6 points on, 3 points off
+            c.rect(outer_margin, outer_margin, 
+                  orig_width - 2 * outer_margin, 
+                  orig_height - 2 * outer_margin,
+                  stroke=1, fill=0)
+                  
+        elif border_style == 'dotted':
+            c.setDash([2, 2])  # 2 points on, 2 points off
+            c.rect(outer_margin, outer_margin, 
+                  orig_width - 2 * outer_margin, 
+                  orig_height - 2 * outer_margin,
+                  stroke=1, fill=0)
+        else:  # solid
+            c.rect(outer_margin, outer_margin, 
+                  orig_width - 2 * outer_margin, 
+                  orig_height - 2 * outer_margin,
+                  stroke=1, fill=0)
+        
         c.save()
         packet.seek(0)
         
@@ -619,37 +803,40 @@ def parse_color(color_string):
         return (0, 0, 0)
 
 def main():
+    # Load configuration
+    config = load_config()
+    
     parser = argparse.ArgumentParser(
         description='Add customizable borders to PDF pages with quality preservation',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with original quality (default)
+  # Basic usage with defaults from config.yaml
   python border_scale.py input.pdf output.pdf
   
   # Process specific pages only
   python border_scale.py input.pdf output.pdf --pages 1-5,10,15-20
   
-  # High-quality rendering for mixed content
-  python border_scale.py input.pdf output.pdf --quality high --dpi 600
+  # Override border style
+  python border_scale.py input.pdf output.pdf --border-style solid
   
-  # Custom margins
-  python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5
+  # Custom margins and rounded corners
+  python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5 --corner-radius 15
   
   # Skip confirmation prompt
   python border_scale.py input.pdf output.pdf -y
+
+Border Styles:
+  - rounded: Rounded corners (default)
+  - solid: Square corners
+  - dashed: Dashed lines (reportlab only)
+  - dotted: Dotted lines (reportlab only)
 
 Page Range Examples:
   --pages 1-5        Process pages 1 through 5
   --pages 1,3,5      Process pages 1, 3, and 5
   --pages 1-3,7-10   Process pages 1-3 and 7-10
   --pages all        Process all pages (default)
-
-Quality Modes:
-  - original: Preserves vector graphics as vectors (default, best for text/drawings)
-  - high: High-quality rendering at specified DPI (best for mixed content)
-  - medium: Balanced quality and file size
-  - standard: Use pypdf method (fallback)
         """
     )
     
@@ -657,39 +844,61 @@ Quality Modes:
     parser.add_argument('output_pdf', help='Output PDF file path')
     
     # Page range option
-    parser.add_argument('--pages', '--page-range', type=str, default='all',
-                       help='Page range to process (e.g., "1-5,10,15-20" or "all")')
+    parser.add_argument('--pages', '--page-range', type=str, 
+                       default=config['processing']['pages'],
+                       help=f'Page range to process (default: {config["processing"]["pages"]})')
     
     # Spacing options
-    parser.add_argument('--outer', '--outer-margin', type=float, default=0.5,
-                       help='Outer margin: space from page edge to border (default: 0.5)')
-    parser.add_argument('--inner', '--inner-padding', type=float, default=0.25,
-                       help='Inner padding: space from border to content (default: 0.25)')
-    parser.add_argument('--unit', choices=['inch', 'mm', 'pt'], default='inch',
-                       help='Unit for margins (default: inch)')
+    parser.add_argument('--outer', '--outer-margin', type=float, 
+                       default=config['spacing']['outer_margin'],
+                       help=f'Outer margin: space from page edge to border (default: {config["spacing"]["outer_margin"]})')
+    parser.add_argument('--inner', '--inner-padding', type=float, 
+                       default=config['spacing']['inner_padding'],
+                       help=f'Inner padding: space from border to content (default: {config["spacing"]["inner_padding"]})')
+    parser.add_argument('--unit', choices=['inch', 'mm', 'pt'], 
+                       default=config['spacing']['unit'],
+                       help=f'Unit for margins (default: {config["spacing"]["unit"]})')
     
     # Border appearance
-    parser.add_argument('--border-width', type=float, default=1,
-                       help='Border line width in points (default: 1)')
-    parser.add_argument('--border-color', type=str, default='0,0,0',
-                       help='Border color as R,G,B (0-255 each, default: "0,0,0" for black)')
+    parser.add_argument('--border-style', choices=['solid', 'rounded', 'dashed', 'dotted'], 
+                       default=config['border']['style'],
+                       help=f'Border style (default: {config["border"]["style"]})')
+    parser.add_argument('--border-width', type=float, 
+                       default=config['border']['width'],
+                       help=f'Border line width in points (default: {config["border"]["width"]})')
+    parser.add_argument('--border-color', type=str, 
+                       default=config['border']['color'],
+                       help=f'Border color as R,G,B (0-255 each, default: "{config["border"]["color"]}")')
+    parser.add_argument('--corner-radius', type=float, 
+                       default=config['border']['corner_radius'],
+                       help=f'Corner radius for rounded borders (default: {config["border"]["corner_radius"]})')
     
-    # Quality options - ORIGINAL is now default
+    # Quality options
     parser.add_argument('--quality', choices=['original', 'high', 'medium', 'standard'], 
-                       default='original',
-                       help='Quality preservation mode (default: original)')
-    parser.add_argument('--dpi', type=int, default=300,
-                       help='DPI for rendering when using high/medium quality (default: 300)')
+                       default=config['quality']['mode'],
+                       help=f'Quality preservation mode (default: {config["quality"]["mode"]})')
+    parser.add_argument('--dpi', type=int, 
+                       default=config['quality']['dpi'],
+                       help=f'DPI for rendering when using high/medium quality (default: {config["quality"]["dpi"]})')
     
     # Scaling options
     parser.add_argument('--no-preserve-ratio', action='store_true',
+                       default=not config['quality']['preserve_ratio'],
                        help='Stretch content to fit (may distort)')
     
     # Confirmation
     parser.add_argument('-y', '--yes', action='store_true',
                        help='Skip confirmation prompt')
     
+    # Config file
+    parser.add_argument('--config', type=str, default='config.yaml',
+                       help='Path to configuration file (default: config.yaml)')
+    
     args = parser.parse_args()
+    
+    # Reload config if different file specified
+    if args.config != 'config.yaml':
+        config = load_config(args.config)
     
     # Check if input file exists
     if not os.path.exists(args.input_pdf):
@@ -727,8 +936,8 @@ Quality Modes:
     # Display settings with visual preview
     display_settings(args, outer_margin_pts, inner_padding_pts, border_color, page_indices, total_pages)
     
-    # Ask for confirmation unless -y flag is used
-    if not args.yes:
+    # Ask for confirmation unless -y flag is used or config says to skip
+    if not args.yes and config['processing']['confirm']:
         if not confirm_proceed():
             sys.exit(0)
     
@@ -742,6 +951,8 @@ Quality Modes:
                 inner_padding_pts,
                 args.border_width,
                 border_color,
+                border_style=args.border_style,
+                corner_radius=args.corner_radius,
                 page_indices=page_indices,
                 preserve_ratio=not args.no_preserve_ratio,
                 quality=args.quality,
@@ -758,6 +969,8 @@ Quality Modes:
                 inner_padding_pts,
                 args.border_width,
                 border_color,
+                border_style=args.border_style,
+                corner_radius=args.corner_radius,
                 page_indices=page_indices,
                 preserve_ratio=not args.no_preserve_ratio
             )
