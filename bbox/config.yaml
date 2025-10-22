@@ -1,0 +1,51 @@
+# BoundaryBox Configuration
+
+# Border appearance
+border:
+  style: "rounded"        # Options: solid, rounded, dashed, dotted
+  width: 1               # Border line width in points
+  color: "0,0,0"        # RGB color (0-255 each)
+  corner_radius: 5      # Corner radius in points (for rounded style)
+
+# Spacing
+spacing:
+  outer_margin: 0.1      # Space from page edge to border
+  inner_padding: 0.025    # Space from border to content
+  unit: "inch"          # Options: inch, mm, pt
+
+# Quality settings
+quality:
+  mode: "original"       # Options: original, high, medium, standard
+  dpi: 300              # DPI for high/medium quality modes
+  preserve_ratio: true   # Preserve aspect ratio
+
+# Page numbers
+page_numbers:
+  enabled: true          # Enable/disable page numbers
+  format: "{n}/{total}"  # Format string: {n} = current page, {total} = total pages
+  position: "top-right"  # Options: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+  location: "outside"    # Options: inside (within border), outside (outside border)
+  font_size: 10         # Font size in points
+  font_color: "0,0,0"   # RGB color (0-255 each)
+  font_family: "Helvetica"  # Font family
+  margin: 20            # Distance from edge in points
+  start_number: 1       # Starting page number
+  skip_first: 0         # Number of first pages to skip numbering
+  skip_last: 0          # Number of last pages to skip numbering
+
+# Document title
+title:
+  enabled: false         # Enable/disable title
+  text: "title"   # Title text (leave empty to extract from PDF metadata)
+  position: "top-center" # Options: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+  location: "inside"    # Options: inside (within border), outside (outside border)
+  font_size: 12         # Font size in points
+  font_color: "0,0,0"   # RGB color (0-255 each)
+  font_family: "Helvetica-Bold"  # Font family
+  margin: 25            # Distance from edge in points
+  only_first_page: true # Show title only on first page
+
+# Processing
+processing:
+  pages: "all"          # Page range: all, or specific like "1-5,10,15-20"
+  confirm: true         # Show confirmation prompt (false to skip)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PDF Border Scaler - Add customizable borders to PDF pages with quality preservation
-Usage: python border_scale.py input.pdf output.pdf [options]
+BoundaryBox - Add customizable borders to PDF pages with quality preservation
+Usage: python boundary-box.py input.pdf output.pdf [options]
 """
 
 import argparse
@@ -11,6 +11,8 @@ from pypdf.generic import RectangleObject, ArrayObject, NameObject, DictionaryOb
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch, mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 import io
 import os
 import time
@@ -56,6 +58,30 @@ def load_config(config_path='config.yaml'):
             'dpi': 300,
             'preserve_ratio': True
         },
+        'page_numbers': {
+            'enabled': False,
+            'format': 'Page {n} of {total}',
+            'position': 'bottom-center',
+            'location': 'outside',
+            'font_size': 10,
+            'font_color': '0,0,0',
+            'font_family': 'Helvetica',
+            'margin': 20,
+            'start_number': 1,
+            'skip_first': 0,
+            'skip_last': 0
+        },
+        'title': {
+            'enabled': False,
+            'text': '',
+            'position': 'top-center',
+            'location': 'inside',
+            'font_size': 12,
+            'font_color': '0,0,0',
+            'font_family': 'Helvetica-Bold',
+            'margin': 25,
+            'only_first_page': True
+        },
         'processing': {
             'pages': 'all',
             'confirm': True
@@ -66,7 +92,6 @@ def load_config(config_path='config.yaml'):
         try:
             with open(config_path, 'r') as f:
                 user_config = yaml.safe_load(f)
-                # Simply use the user config if it exists
                 if user_config:
                     return user_config
         except Exception as e:
@@ -112,40 +137,27 @@ def get_file_size_str(file_path):
     return f"{size:.1f}TB"
 
 def parse_page_range(page_range_str, total_pages):
-    """
-    Parse page range string and return list of page numbers (0-indexed)
-    
-    Examples:
-        "1-5" -> [0, 1, 2, 3, 4]
-        "1,3,5" -> [0, 2, 4]
-        "1-3,7,9-10" -> [0, 1, 2, 6, 8, 9]
-        "all" or None -> all pages
-    """
+    """Parse page range string and return list of page numbers (0-indexed)"""
     if not page_range_str or page_range_str.lower() == 'all':
         return list(range(total_pages))
     
     pages = set()
-    
-    # Split by comma
     parts = page_range_str.split(',')
     
     for part in parts:
         part = part.strip()
         
-        # Check if it's a range (e.g., "1-5")
         if '-' in part:
             try:
                 start, end = part.split('-')
                 start = int(start.strip())
                 end = int(end.strip())
                 
-                # Convert to 0-indexed and add to set
                 for page in range(max(1, start), min(total_pages + 1, end + 1)):
                     pages.add(page - 1)
             except ValueError:
                 print(f"⚠️  Invalid page range: {part}")
         else:
-            # Single page number
             try:
                 page_num = int(part)
                 if 1 <= page_num <= total_pages:
@@ -157,11 +169,228 @@ def parse_page_range(page_range_str, total_pages):
     
     return sorted(list(pages))
 
+def format_page_number(format_string, current_page, total_pages):
+    """Format page number string"""
+    if not format_string:
+        return ""
+    
+    # Replace {n} with current page number
+    result = format_string.replace("{n}", str(current_page))
+    
+    # Replace {total} with total pages
+    result = result.replace("{total}", str(total_pages))
+    
+    # If format doesn't contain {n}, don't show anything
+    if "{n}" not in format_string and str(current_page) not in result:
+        return ""
+    
+    return result
+
+def calculate_text_position(position, location, page_width, page_height, 
+                           outer_margin, text_width, text_height, margin):
+    """Calculate x, y coordinates for text placement (PDF coordinates: bottom-left origin)"""
+    
+    # Determine base position based on location (inside/outside border)
+    if location == 'inside':
+        # Inside the border
+        left_bound = outer_margin + margin
+        right_bound = page_width - outer_margin - margin
+        top_bound = page_height - outer_margin - margin  
+        bottom_bound = outer_margin + margin
+    else:
+        # Outside the border
+        left_bound = margin
+        right_bound = page_width - margin
+        top_bound = page_height - margin
+        bottom_bound = margin
+    
+    # Calculate x position
+    if 'left' in position:
+        x = left_bound
+    elif 'right' in position:
+        x = right_bound - text_width
+    else:  # center
+        x = (page_width - text_width) / 2
+    
+    # Calculate y position (PDF coordinates - bottom is 0, top is page_height)
+    if 'top' in position:
+        y = top_bound - text_height  # Near top of page
+    elif 'bottom' in position:
+        y = bottom_bound  # Near bottom of page
+    else:  # center
+        y = (page_height) / 2
+    
+    return x, y
+
+def add_page_elements_pymupdf(page, page_num, total_pages, config, outer_margin, doc_title=""):
+    """Add page numbers and title using PyMuPDF"""
+    page_width = page.rect.width
+    page_height = page.rect.height
+    
+    # Add page numbers
+    if config['page_numbers']['enabled']:
+        skip_first = config['page_numbers'].get('skip_first', 0)
+        skip_last = config['page_numbers'].get('skip_last', 0)
+        
+        if page_num > skip_first and page_num <= (total_pages - skip_last):
+            start_number = config['page_numbers'].get('start_number', 1)
+            display_page_num = start_number + page_num - 1 - skip_first
+            
+            text = format_page_number(
+                config['page_numbers']['format'],
+                display_page_num,
+                total_pages - skip_first - skip_last
+            )
+            
+            if text:
+                color_parts = config['page_numbers']['font_color'].split(',')
+                color = tuple(int(c) / 255.0 for c in color_parts)
+                
+                font_size = config['page_numbers']['font_size']
+                margin = config['page_numbers']['margin']
+                
+                # Estimate text dimensions
+                text_width = len(text) * font_size * 0.5
+                text_height = font_size
+                
+                # Calculate position
+                x, y = calculate_text_position(
+                    config['page_numbers']['position'],
+                    config['page_numbers']['location'],
+                    page_width, page_height, outer_margin,
+                    text_width, text_height, margin
+                )
+                
+                # PyMuPDF uses top-left origin, so we need to convert Y coordinate
+                # PDF y=0 is bottom, PyMuPDF y=0 is top
+                pymupdf_y = page_height - y
+                
+                # Insert text
+                page.insert_text(
+                    fitz.Point(x, pymupdf_y),
+                    text,
+                    fontsize=font_size,
+                    color=color,
+                    fontname='helv'
+                )
+    
+    # Add title
+    if config['title']['enabled']:
+        if not config['title'].get('only_first_page', True) or page_num == 1:
+            title_text = config['title'].get('text', '') or doc_title
+            
+            if title_text:
+                color_parts = config['title']['font_color'].split(',')
+                color = tuple(int(c) / 255.0 for c in color_parts)
+                
+                font_size = config['title']['font_size']
+                margin = config['title']['margin']
+                
+                # Estimate text dimensions
+                text_width = len(title_text) * font_size * 0.4
+                text_height = font_size
+                
+                # Calculate position
+                x, y = calculate_text_position(
+                    config['title']['position'],
+                    config['title']['location'],
+                    page_width, page_height, outer_margin,
+                    text_width, text_height, margin
+                )
+                
+                # PyMuPDF uses top-left origin, convert Y coordinate
+                pymupdf_y = page_height - y
+                
+                # Insert text
+                page.insert_text(
+                    fitz.Point(x, pymupdf_y),
+                    title_text,
+                    fontsize=font_size,
+                    color=color,
+                    fontname='hebo'
+                )
+
+def add_page_elements_reportlab(c, page_num, total_pages, config, outer_margin, 
+                                page_width, page_height, doc_title=""):
+    """Add page numbers and title using ReportLab"""
+    
+    # Add page numbers
+    if config['page_numbers']['enabled']:
+        skip_first = config['page_numbers'].get('skip_first', 0)
+        skip_last = config['page_numbers'].get('skip_last', 0)
+        
+        if page_num > skip_first and page_num <= (total_pages - skip_last):
+            start_number = config['page_numbers'].get('start_number', 1)
+            display_page_num = start_number + page_num - 1 - skip_first
+            
+            text = format_page_number(
+                config['page_numbers']['format'],
+                display_page_num,
+                total_pages - skip_first - skip_last
+            )
+            
+            if text:
+                color_parts = config['page_numbers']['font_color'].split(',')
+                c.setFillColorRGB(*(int(c) / 255.0 for c in color_parts))
+                
+                font_family = config['page_numbers'].get('font_family', 'Helvetica')
+                font_size = config['page_numbers']['font_size']
+                c.setFont(font_family, font_size)
+                
+                text_width = c.stringWidth(text, font_family, font_size)
+                text_height = font_size
+                
+                margin = config['page_numbers']['margin']
+                x, y = calculate_text_position(
+                    config['page_numbers']['position'],
+                    config['page_numbers']['location'],
+                    page_width, page_height, outer_margin,
+                    text_width, text_height, margin
+                )
+                
+                # ReportLab uses bottom-left origin (same as PDF)
+                c.drawString(x, y, text)
+    
+    # Add title
+    if config['title']['enabled']:
+        if not config['title'].get('only_first_page', True) or page_num == 1:
+            title_text = config['title'].get('text', '') or doc_title
+            
+            if title_text:
+                color_parts = config['title']['font_color'].split(',')
+                c.setFillColorRGB(*(int(c) / 255.0 for c in color_parts))
+                
+                font_family = config['title'].get('font_family', 'Helvetica-Bold')
+                font_size = config['title']['font_size']
+                c.setFont(font_family, font_size)
+                
+                text_width = c.stringWidth(title_text, font_family, font_size)
+                text_height = font_size
+                
+                margin = config['title']['margin']
+                x, y = calculate_text_position(
+                    config['title']['position'],
+                    config['title']['location'],
+                    page_width, page_height, outer_margin,
+                    text_width, text_height, margin
+                )
+                
+                # ReportLab uses bottom-left origin
+                c.drawString(x, y, title_text)
+
+def get_pdf_title(pdf_path):
+    """Extract title from PDF metadata"""
+    try:
+        reader = PdfReader(pdf_path)
+        if reader.metadata and '/Title' in reader.metadata:
+            return reader.metadata['/Title']
+    except:
+        pass
+    return ""
+
 def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_rgb, 
                          border_style='solid', corner_radius_ratio=0, preserve_ratio=True):
-    """
-    Create an ASCII art preview of how the border will look
-    """
+    """Create an ASCII art preview of how the border will look"""
     
     # Terminal dimensions for the preview (characters)
     preview_width = 60
@@ -302,10 +531,11 @@ def create_visual_preview(outer_margin_ratio, inner_padding_ratio, border_color_
     
     return preview_text
 
-def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, page_indices, total_pages):
+def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, 
+                    page_indices, total_pages, config):
     """Display the settings that will be applied with visual preview"""
     print("\n" + "="*60)
-    print("📋 BORDER SETTINGS TO BE APPLIED")
+    print("📋 BOUNDARYBOX - SETTINGS TO BE APPLIED")
     print("="*60)
     
     print(f"\n📁 Files:")
@@ -317,12 +547,10 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, pa
     if len(page_indices) == total_pages:
         print(f"  • Processing: All pages (1-{total_pages})")
     else:
-        # Format page ranges for display
-        page_nums = [p + 1 for p in page_indices]  # Convert to 1-indexed
+        page_nums = [p + 1 for p in page_indices]
         if len(page_nums) <= 10:
             print(f"  • Processing: {', '.join(map(str, page_nums))} ({len(page_nums)} of {total_pages} pages)")
         else:
-            # Show first and last few pages
             display_pages = page_nums[:3] + ['...'] + page_nums[-3:]
             print(f"  • Processing: {', '.join(map(str, display_pages))} ({len(page_nums)} of {total_pages} pages)")
     
@@ -339,6 +567,23 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, pa
     color_rgb = tuple(int(c * 255) for c in border_color)
     print(f"  • Color: RGB{color_rgb}")
     
+    # Display page numbers settings if enabled
+    if config['page_numbers']['enabled']:
+        print(f"\n📑 Page Numbers:")
+        print(f"  • Format: {config['page_numbers']['format']}")
+        print(f"  • Position: {config['page_numbers']['position']} ({config['page_numbers']['location']} border)")
+        print(f"  • Font: {config['page_numbers']['font_family']}, {config['page_numbers']['font_size']}pt")
+    
+    # Display title settings if enabled
+    if config['title']['enabled']:
+        print(f"\n📝 Title:")
+        title_text = config['title'].get('text', '') or "[From PDF metadata]"
+        print(f"  • Text: {title_text}")
+        print(f"  • Position: {config['title']['position']} ({config['title']['location']} border)")
+        print(f"  • Font: {config['title']['font_family']}, {config['title']['font_size']}pt")
+        if config['title'].get('only_first_page', True):
+            print(f"  • Display: First page only")
+    
     print(f"\n⚙️  Quality Settings:")
     print(f"  • Quality mode: {args.quality.upper()}")
     if args.quality in ['high', 'medium']:
@@ -351,18 +596,15 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, pa
     try:
         reader = PdfReader(args.input_pdf)
         if len(reader.pages) > 0:
-            # Use the first page from the selected range for preview
             first_page_idx = page_indices[0] if page_indices else 0
             page = reader.pages[first_page_idx]
             page_width = float(page.mediabox.width)
             page_height = float(page.mediabox.height)
             
-            # Calculate ratios for preview
             outer_ratio = outer_margin_pts / min(page_width, page_height)
             inner_ratio = inner_padding_pts / min(page_width, page_height)
             corner_ratio = args.corner_radius / min(page_width, page_height) if args.border_style == 'rounded' else 0
             
-            # Display visual preview
             preview = create_visual_preview(
                 outer_ratio, 
                 inner_ratio, 
@@ -373,7 +615,6 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color, pa
             )
             print(preview)
     except Exception as e:
-        # If preview fails, continue without it
         print(f"(Preview generation skipped: {str(e)})")
     
     print("\n" + "="*60)
@@ -386,40 +627,32 @@ def confirm_proceed():
     print()
     
     try:
-        # For Windows
         if sys.platform == 'win32':
             import msvcrt
             print("   Waiting for input...", end='', flush=True)
             key = msvcrt.getch()
-            print()  # New line after input
+            print()
             
-            # Check if Enter was pressed (carriage return)
             if key in [b'\r', b'\n']:
                 print("✅ Proceeding with processing...")
                 return True
             else:
                 print("❌ Operation cancelled")
                 return False
-        
-        # For Unix/Linux/Mac
         else:
             import termios, tty
             
-            # Save terminal settings
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             
             try:
-                # Set terminal to raw mode to read single character
                 tty.setraw(sys.stdin.fileno())
                 print("   Waiting for input...", end='', flush=True)
                 key = sys.stdin.read(1)
                 
-                # Restore terminal settings before printing
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-                print()  # New line after input
+                print()
                 
-                # Check if Enter was pressed
                 if key == '\r' or key == '\n':
                     print("✅ Proceeding with processing...")
                     return True
@@ -428,14 +661,12 @@ def confirm_proceed():
                     return False
                     
             finally:
-                # Make sure terminal settings are restored
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                 
     except KeyboardInterrupt:
         print("\n❌ Operation cancelled (Ctrl+C)")
         return False
     except Exception as e:
-        # Fallback to simple input() if special key handling fails
         print("\n   (Press Enter to continue, Ctrl+C to cancel)")
         try:
             input()
@@ -448,13 +679,14 @@ def confirm_proceed():
 def process_pdf_high_quality(input_path, output_path, outer_margin, inner_padding, 
                             border_width, border_color, border_style='solid',
                             corner_radius=0, page_indices=None,
-                            preserve_ratio=True, quality='original', dpi=300):
-    """
-    Process PDF using PyMuPDF for better quality preservation
-    """
+                            preserve_ratio=True, quality='original', dpi=300, config=None):
+    """Process PDF using PyMuPDF for better quality preservation"""
     
     print(f"\n📄 Reading '{input_path}'...")
     start_time = time.time()
+    
+    # Get document title
+    doc_title = get_pdf_title(input_path) if config else ""
     
     # Open with PyMuPDF for better quality handling
     doc = fitz.open(input_path)
@@ -462,7 +694,6 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
     
     total_pages = len(doc)
     
-    # Use all pages if none specified
     if page_indices is None:
         page_indices = list(range(total_pages))
     
@@ -475,26 +706,21 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
     else:
         print()
     
-    # Create progress bar
     progress = ProgressBar(len(page_indices), width=40, suffix='pages')
     
     for idx, page_num in enumerate(page_indices):
         progress.update(idx + 1)
         
-        # Get the page
         page = doc[page_num]
         rect = page.rect
         
-        # Calculate dimensions
         orig_width = rect.width
         orig_height = rect.height
         
-        # Total margin calculation
         total_margin = outer_margin + inner_padding
         available_width = orig_width - 2 * total_margin
         available_height = orig_height - 2 * total_margin
         
-        # Calculate scale factor
         scale_x = available_width / orig_width
         scale_y = available_height / orig_height
         
@@ -503,18 +729,15 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
         else:
             scale_factor = scale_x
         
-        # Determine rendering quality
         if quality == 'high':
             mat = fitz.Matrix(scale_factor * (dpi/72), scale_factor * (dpi/72))
         elif quality == 'original':
             mat = fitz.Matrix(scale_factor, scale_factor)
-        else:  # medium
+        else:
             mat = fitz.Matrix(scale_factor * 2, scale_factor * 2)
         
-        # Create new page with same dimensions
         new_page = output_doc.new_page(width=orig_width, height=orig_height)
         
-        # Calculate position for centered content
         if preserve_ratio:
             scaled_width = orig_width * scale_factor
             scaled_height = orig_height * scale_factor
@@ -524,9 +747,7 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
             x_offset = total_margin
             y_offset = total_margin
         
-        # Method 1: Direct vector preservation (best quality for vector content)
         if quality == 'original':
-            # This preserves vectors as vectors
             xref = new_page.show_pdf_page(
                 fitz.Rect(x_offset, y_offset, 
                          x_offset + orig_width * scale_factor,
@@ -535,10 +756,8 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
                 page_num
             )
         else:
-            # Method 2: High-quality rasterization (for mixed content)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             
-            # Insert the pixmap into the new page
             new_page.insert_image(
                 fitz.Rect(x_offset, y_offset,
                          x_offset + available_width,
@@ -549,24 +768,18 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
         # Draw border
         shape = new_page.new_shape()
         
-        # Convert border color from 0-1 to 0-255
         border_rgb = tuple(int(c * 255) for c in border_color)
         
-        # Rectangle dimensions
         x0 = outer_margin
         y0 = outer_margin
         x1 = orig_width - outer_margin
         y1 = orig_height - outer_margin
         
         if border_style == 'rounded' and corner_radius > 0:
-            # Limit corner radius to half the smaller dimension
-            max_radius = min((x1 - x0) / 2, (y1 - y0) / 2, 50)  # Also limit to 50 points max
+            max_radius = min((x1 - x0) / 2, (y1 - y0) / 2, 50)
             actual_radius = min(corner_radius, max_radius)
             
-            # Draw rounded rectangle using lines and arcs
-            # We'll approximate rounded corners with multiple small lines
-            
-            # Top line
+            # Draw rounded rectangle with lines and arcs
             shape.draw_line(fitz.Point(x0 + actual_radius, y0), 
                           fitz.Point(x1 - actual_radius, y0))
             
@@ -583,7 +796,6 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
                               center.y + actual_radius * math.sin(rad2))
                 shape.draw_line(p1, p2)
             
-            # Right line
             shape.draw_line(fitz.Point(x1, y0 + actual_radius), 
                           fitz.Point(x1, y1 - actual_radius))
             
@@ -600,7 +812,6 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
                               center.y + actual_radius * math.sin(rad2))
                 shape.draw_line(p1, p2)
             
-            # Bottom line
             shape.draw_line(fitz.Point(x1 - actual_radius, y1), 
                           fitz.Point(x0 + actual_radius, y1))
             
@@ -617,7 +828,6 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
                               center.y + actual_radius * math.sin(rad2))
                 shape.draw_line(p1, p2)
             
-            # Left line
             shape.draw_line(fitz.Point(x0, y1 - actual_radius), 
                           fitz.Point(x0, y0 + actual_radius))
             
@@ -634,60 +844,58 @@ def process_pdf_high_quality(input_path, output_path, outer_margin, inner_paddin
                               center.y + actual_radius * math.sin(rad2))
                 shape.draw_line(p1, p2)
             
-        else:  # solid, dashed, or dotted
-            # Draw rectangle border
+        else:
             border_rect = fitz.Rect(x0, y0, x1, y1)
             shape.draw_rect(border_rect)
         
         shape.finish(width=border_width, color=border_rgb, fill=None)
         shape.commit()
+        
+        # Add page numbers and title if configured
+        if config:
+            add_page_elements_pymupdf(new_page, idx + 1, len(page_indices), 
+                                     config, outer_margin, doc_title)
     
-    # Save with optimization
     print("💾 Saving PDF with quality preservation...")
     
-    # Save options for quality - using only valid PyMuPDF options
     save_options = {
-        'garbage': 4,  # Maximum garbage collection
-        'deflate': True,  # Compress streams
-        'clean': True,  # Clean up redundant objects
+        'garbage': 4,
+        'deflate': True,
+        'clean': True,
     }
     
     output_doc.save(output_path, **save_options)
     
-    # Close documents
     doc.close()
     output_doc.close()
     
-    # Calculate processing time
     end_time = time.time()
     processing_time = end_time - start_time
     output_size = get_file_size_str(output_path)
     
-    # Print success message
     print(f"✅ Saved '{output_path}' ({output_size})")
     print(f"⏱️  Processing time: {processing_time:.2f} seconds")
 
 def process_pdf_standard(input_path, output_path, outer_margin, inner_padding, 
                         border_width, border_color, border_style='solid',
-                        corner_radius=0, page_indices=None, preserve_ratio=True):
-    """
-    Standard processing using pypdf (fallback method)
-    """
+                        corner_radius=0, page_indices=None, preserve_ratio=True, config=None):
+    """Standard processing using pypdf (fallback method)"""
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
     
     print(f"\n📄 Reading '{input_path}'...")
     start_time = time.time()
     
+    # Get document title
+    doc_title = get_pdf_title(input_path) if config else ""
+    
     reader = PdfReader(input_path)
     writer = PdfWriter()
     
-    # Set compression
     writer.compress_identical_objects(remove_use_as=True)
     
     total_pages = len(reader.pages)
     
-    # Use all pages if none specified
     if page_indices is None:
         page_indices = list(range(total_pages))
     
@@ -703,17 +911,14 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
         
         page = reader.pages[page_num]
         
-        # Get original page dimensions
         page_box = page.mediabox
         orig_width = float(page_box.width)
         orig_height = float(page_box.height)
         
-        # Calculate available space
         total_margin = outer_margin + inner_padding
         available_width = orig_width - 2 * total_margin
         available_height = orig_height - 2 * total_margin
         
-        # Calculate scale factor
         scale_x = available_width / orig_width
         scale_y = available_height / orig_height
         
@@ -724,21 +929,19 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
             translate_x = total_margin + (available_width - scaled_width) / 2
             translate_y = total_margin + (available_height - scaled_height) / 2
             
-            # Apply transformation
             page.add_transformation([scale_factor, 0, 0, scale_factor, translate_x, translate_y])
         else:
             translate_x = total_margin
             translate_y = total_margin
             page.add_transformation([scale_x, 0, 0, scale_y, translate_x, translate_y])
         
-        # Create border
+        # Create border with page elements
         packet = io.BytesIO()
         c = canvas.Canvas(packet, pagesize=(orig_width, orig_height))
         c.setStrokeColorRGB(*border_color)
         c.setLineWidth(border_width)
         
         if border_style == 'rounded' and corner_radius > 0:
-            # Draw rounded rectangle
             max_radius = min((orig_width - 2 * outer_margin) / 2, 
                            (orig_height - 2 * outer_margin) / 2, 50)
             actual_radius = min(corner_radius, max_radius)
@@ -749,23 +952,28 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
                        actual_radius, stroke=1, fill=0)
                        
         elif border_style == 'dashed':
-            c.setDash([6, 3])  # 6 points on, 3 points off
+            c.setDash([6, 3])
             c.rect(outer_margin, outer_margin, 
                   orig_width - 2 * outer_margin, 
                   orig_height - 2 * outer_margin,
                   stroke=1, fill=0)
                   
         elif border_style == 'dotted':
-            c.setDash([2, 2])  # 2 points on, 2 points off
+            c.setDash([2, 2])
             c.rect(outer_margin, outer_margin, 
                   orig_width - 2 * outer_margin, 
                   orig_height - 2 * outer_margin,
                   stroke=1, fill=0)
-        else:  # solid
+        else:
             c.rect(outer_margin, outer_margin, 
                   orig_width - 2 * outer_margin, 
                   orig_height - 2 * outer_margin,
                   stroke=1, fill=0)
+        
+        # Add page numbers and title if configured
+        if config:
+            add_page_elements_reportlab(c, idx + 1, len(page_indices), config, 
+                                       outer_margin, orig_width, orig_height, doc_title)
         
         c.save()
         packet.seek(0)
@@ -773,12 +981,10 @@ def process_pdf_standard(input_path, output_path, outer_margin, inner_padding,
         border_pdf = PdfReader(packet)
         border_page = border_pdf.pages[0]
         
-        # Merge pages
         new_page = writer.add_blank_page(width=orig_width, height=orig_height)
         new_page.merge_page(page)
         new_page.merge_page(border_page)
     
-    # Save output
     print("💾 Saving PDF...")
     with open(output_path, 'wb') as output_file:
         writer.write(output_file)
@@ -803,28 +1009,27 @@ def parse_color(color_string):
         return (0, 0, 0)
 
 def main():
-    # Load configuration
     config = load_config()
     
     parser = argparse.ArgumentParser(
-        description='Add customizable borders to PDF pages with quality preservation',
+        description='BoundaryBox - Add customizable borders to PDF pages',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic usage with defaults from config.yaml
-  python border_scale.py input.pdf output.pdf
+  python boundary-box.py input.pdf output.pdf
   
   # Process specific pages only
-  python border_scale.py input.pdf output.pdf --pages 1-5,10,15-20
+  python boundary-box.py input.pdf output.pdf --pages 1-5,10,15-20
   
   # Override border style
-  python border_scale.py input.pdf output.pdf --border-style solid
+  python boundary-box.py input.pdf output.pdf --border-style solid
   
   # Custom margins and rounded corners
-  python border_scale.py input.pdf output.pdf --outer 1.0 --inner 0.5 --corner-radius 15
+  python boundary-box.py input.pdf output.pdf --outer 1.0 --inner 0.5 --corner-radius 15
   
   # Skip confirmation prompt
-  python border_scale.py input.pdf output.pdf -y
+  python boundary-box.py input.pdf output.pdf -y
 
 Border Styles:
   - rounded: Rounded corners (default)
@@ -843,12 +1048,10 @@ Page Range Examples:
     parser.add_argument('input_pdf', help='Input PDF file path')
     parser.add_argument('output_pdf', help='Output PDF file path')
     
-    # Page range option
     parser.add_argument('--pages', '--page-range', type=str, 
                        default=config['processing']['pages'],
                        help=f'Page range to process (default: {config["processing"]["pages"]})')
     
-    # Spacing options
     parser.add_argument('--outer', '--outer-margin', type=float, 
                        default=config['spacing']['outer_margin'],
                        help=f'Outer margin: space from page edge to border (default: {config["spacing"]["outer_margin"]})')
@@ -859,7 +1062,6 @@ Page Range Examples:
                        default=config['spacing']['unit'],
                        help=f'Unit for margins (default: {config["spacing"]["unit"]})')
     
-    # Border appearance
     parser.add_argument('--border-style', choices=['solid', 'rounded', 'dashed', 'dotted'], 
                        default=config['border']['style'],
                        help=f'Border style (default: {config["border"]["style"]})')
@@ -873,7 +1075,6 @@ Page Range Examples:
                        default=config['border']['corner_radius'],
                        help=f'Corner radius for rounded borders (default: {config["border"]["corner_radius"]})')
     
-    # Quality options
     parser.add_argument('--quality', choices=['original', 'high', 'medium', 'standard'], 
                        default=config['quality']['mode'],
                        help=f'Quality preservation mode (default: {config["quality"]["mode"]})')
@@ -881,31 +1082,25 @@ Page Range Examples:
                        default=config['quality']['dpi'],
                        help=f'DPI for rendering when using high/medium quality (default: {config["quality"]["dpi"]})')
     
-    # Scaling options
     parser.add_argument('--no-preserve-ratio', action='store_true',
                        default=not config['quality']['preserve_ratio'],
                        help='Stretch content to fit (may distort)')
     
-    # Confirmation
     parser.add_argument('-y', '--yes', action='store_true',
                        help='Skip confirmation prompt')
     
-    # Config file
     parser.add_argument('--config', type=str, default='config.yaml',
                        help='Path to configuration file (default: config.yaml)')
     
     args = parser.parse_args()
     
-    # Reload config if different file specified
     if args.config != 'config.yaml':
         config = load_config(args.config)
     
-    # Check if input file exists
     if not os.path.exists(args.input_pdf):
         print(f"❌ Error: Input file '{args.input_pdf}' not found")
         sys.exit(1)
     
-    # Get total pages and parse page range
     try:
         reader = PdfReader(args.input_pdf)
         total_pages = len(reader.pages)
@@ -919,7 +1114,6 @@ Page Range Examples:
         print(f"❌ Error reading PDF: {e}")
         sys.exit(1)
     
-    # Convert units to points
     unit_multipliers = {
         'inch': 72,
         'mm': 72 / 25.4,
@@ -930,19 +1124,16 @@ Page Range Examples:
     outer_margin_pts = args.outer * multiplier
     inner_padding_pts = args.inner * multiplier
     
-    # Parse border color
     border_color = parse_color(args.border_color)
     
-    # Display settings with visual preview
-    display_settings(args, outer_margin_pts, inner_padding_pts, border_color, page_indices, total_pages)
+    display_settings(args, outer_margin_pts, inner_padding_pts, border_color, 
+                    page_indices, total_pages, config)
     
-    # Ask for confirmation unless -y flag is used or config says to skip
     if not args.yes and config['processing']['confirm']:
         if not confirm_proceed():
             sys.exit(0)
     
     try:
-        # Check if PyMuPDF is available for high-quality processing
         if args.quality != 'standard' and PYMUPDF_AVAILABLE:
             process_pdf_high_quality(
                 args.input_pdf,
@@ -956,7 +1147,8 @@ Page Range Examples:
                 page_indices=page_indices,
                 preserve_ratio=not args.no_preserve_ratio,
                 quality=args.quality,
-                dpi=args.dpi
+                dpi=args.dpi,
+                config=config
             )
         else:
             if args.quality != 'standard' and not PYMUPDF_AVAILABLE:
@@ -972,7 +1164,8 @@ Page Range Examples:
                 border_style=args.border_style,
                 corner_radius=args.corner_radius,
                 page_indices=page_indices,
-                preserve_ratio=not args.no_preserve_ratio
+                preserve_ratio=not args.no_preserve_ratio,
+                config=config
             )
             
     except KeyboardInterrupt:
