@@ -286,7 +286,16 @@ pyinstaller --onefile --icon=bbox.ico --name=bbox bbox.py
 
 #### Windows
 ```bash
+# Requires Elevated Permissions Powershell
 pyinstaller --onefile --icon=bbox.ico --name=bbox.exe --add-data="config.yaml;." bbox.py
+
+echo.
+echo Creating installation directory...
+mkdir "C:\Program Files\bbox" 2>nul
+
+echo Copying files...
+copy /Y "dist\bbox.exe" "C:\Program Files\bbox\bbox.exe"
+copy /Y "config.yaml" "C:\Program Files\bbox\config.yaml"
 ```
 
 #### Linux/Mac
@@ -295,6 +304,7 @@ pyinstaller --onefile --name=bbox --add-data="config.yaml:." bbox.py
 ```
 
 The binary will be in `dist/` folder after building.
+
 
 ## Output Example
 
