@@ -1,6 +1,6 @@
 # BBox
 
-A powerful Python tool for adding customizable borders to PDF pages while preserving content quality. Scale your PDF content to fit within borders with precise control over spacing, quality, appearance, page numbering, and titles.
+A powerful Python tool for adding customizable borders, page numbers, and titles to PDF pages while preserving content quality. Scale your PDF content to fit within borders with precise control over spacing, quality, and appearance.
 
 ## Features
 
@@ -17,25 +17,24 @@ A powerful Python tool for adding customizable borders to PDF pages while preser
 - 📄 **Page Range Selection**: Process specific pages or page ranges
 - ⌨️ **Intuitive Confirmation**: Simple Enter/any-key confirmation system
 - ⚙️ **Configuration File**: YAML-based configuration for default settings
+- 💾 **Standalone Binary**: Available as executable for deployment without Python
 
 ## Installation
 
-### Using pip
+### Option 1: Using Python
 ```bash
 pip install -r requirements.txt
 ```
 
-### Manual Installation
-```bash
-pip install pypdf>=3.1.0 reportlab>=4.0.0 pymupdf>=1.23.0 pyyaml>=6.0
-```
+### Option 2: Using Pre-built Binary
+Download the latest release from the releases page:
+- Windows: `bbox.exe`
+- Linux/Mac: `bbox`
 
-### Requirements File (requirements.txt)
-```
-pypdf>=3.1.0
-reportlab>=4.0.0
-pymupdf>=1.23.0
-pyyaml>=6.0
+### Option 3: Build Your Own Binary
+```bash
+pip install pyinstaller
+pyinstaller --onefile --icon=bbox.ico --name=bbox bbox.py
 ```
 
 ## Configuration
@@ -82,7 +81,7 @@ page_numbers:
 # Document title
 title:
   enabled: false         # Enable/disable title
-  text: "title"              # Title text (leave empty to extract from PDF metadata)
+  text: ""              # Title text (leave empty to extract from PDF metadata)
   position: "top-center" # Options: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
   location: "inside"    # Options: inside (within border), outside (outside border)
   font_size: 12         # Font size in points
@@ -99,11 +98,19 @@ processing:
 
 ## Quick Start
 
-### Basic Usage
+### Using Python Script
 ```bash
 python bbox.py input.pdf output.pdf
 ```
-Uses all settings from config.yaml
+
+### Using Binary
+```bash
+# Windows
+bbox.exe input.pdf output.pdf
+
+# Linux/Mac
+./bbox input.pdf output.pdf
+```
 
 ### Override Config Settings
 ```bash
@@ -137,7 +144,7 @@ python bbox.py input.pdf output.pdf -y
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--outer` | 0.1 (from config) | Outer margin (space from page edge to border) |
-| `--inner` | 0.025 (from config) | Inner padding (space from border to content) |
+| `--inner` | 0.1 (from config) | Inner padding (space from border to content) |
 | `--unit` | inch (from config) | Unit for measurements: `inch`, `mm`, or `pt` |
 
 ### Border Styling
@@ -161,102 +168,133 @@ python bbox.py input.pdf output.pdf -y
 | `-y`, `--yes` | Skip confirmation prompt |
 | `--config` | Path to custom config file (default: config.yaml) |
 
-## Page Numbering Formats
+## Page Numbering
 
-BBox supports flexible page numbering through format strings:
+### Format Strings
+- `{n}/{total}` → "1/10", "2/10"
+- `Page {n} of {total}` → "Page 1 of 10"
+- `{n}` → "1", "2"
+- `- {n} -` → "- 1 -"
 
-- `{n}/{total}` - Shows "1/10", "2/10", etc.
-- `Page {n} of {total}` - Shows "Page 1 of 10"
-- `{n}` - Shows just the page number
-- `- {n} -` - Shows "- 1 -", "- 2 -", etc.
+### Positioning Options
+- **Position**: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+- **Location**: inside or outside the border
+- **Skip Options**: Skip first/last pages, custom start number
+
+## Document Titles
+
+Add titles from PDF metadata or custom text:
+- Automatic extraction from PDF metadata
+- Custom text override
+- Position control (same as page numbers)
+- First page only or all pages
 
 ## Border Styles
 
 ### Rounded (Default)
-Creates borders with smooth, rounded corners. Corner radius is configurable.
 ```bash
 python bbox.py input.pdf output.pdf --border-style rounded --corner-radius 10
 ```
 
 ### Solid
-Traditional rectangular borders with sharp corners.
 ```bash
 python bbox.py input.pdf output.pdf --border-style solid
 ```
 
-### Dashed
-Borders with dashed lines (only available in standard/reportlab mode).
+### Dashed (standard mode only)
 ```bash
 python bbox.py input.pdf output.pdf --border-style dashed --quality standard
 ```
 
-### Dotted
-Borders with dotted lines (only available in standard/reportlab mode).
+### Dotted (standard mode only)
 ```bash
 python bbox.py input.pdf output.pdf --border-style dotted --quality standard
 ```
 
 ## Usage Examples
 
-### 1. Basic Border Addition
-Use all defaults from config.yaml:
+### 1. Basic Border with Page Numbers
 ```bash
 python bbox.py document.pdf output.pdf
 ```
 
-### 2. Custom Rounded Corners
-Adjust corner radius for rounded borders:
-```bash
-python bbox.py document.pdf output.pdf --corner-radius 15
+### 2. Custom Page Format in Config
+```yaml
+page_numbers:
+  format: "Page {n} of {total}"
+  position: "bottom-center"
 ```
 
-### 3. Square Borders
-Use solid borders instead of rounded:
-```bash
-python bbox.py document.pdf output.pdf --border-style solid
+### 3. Add Title to First Page
+```yaml
+title:
+  enabled: true
+  text: "Annual Report 2024"
+  position: "top-center"
 ```
 
-### 4. Process Specific Pages
-First 10 pages only:
+### 4. Process Page Range
 ```bash
-python bbox.py document.pdf output.pdf --pages 1-10
+python bbox.py document.pdf output.pdf --pages 1-10,15,20-25
 ```
 
-### 5. Custom Spacing
-Large outer margin with minimal inner padding:
+### 5. Minimal Margins
 ```bash
-python bbox.py document.pdf output.pdf --outer 1.5 --inner 0.1
+python bbox.py document.pdf output.pdf --outer 0.05 --inner 0.05
 ```
 
-### 6. Metric Units
-Using millimeters:
+### 6. Colored Border
 ```bash
-python bbox.py document.pdf output.pdf --outer 25 --inner 10 --unit mm
+python bbox.py document.pdf output.pdf --border-color "0,0,255" --border-width 2
 ```
 
-### 7. Colored Borders
-Red border with custom width:
-```bash
-python bbox.py document.pdf output.pdf --border-color "255,0,0" --border-width 2
-```
-
-### 8. High-Quality Processing
-For documents with images:
+### 7. High Quality for Images
 ```bash
 python bbox.py document.pdf output.pdf --quality high --dpi 600
 ```
 
-### 9. Batch Processing
-Skip confirmation for automation:
-```bash
-python bbox.py input.pdf output.pdf -y --pages 1-50
+### 8. Skip First 2 Pages for Numbering
+```yaml
+page_numbers:
+  skip_first: 2
+  start_number: 1
 ```
 
-### 10. Custom Config File
-Use alternative configuration:
+### 9. Batch Processing
 ```bash
-python bbox.py input.pdf output.pdf --config custom-config.yaml
+python bbox.py input.pdf output.pdf -y
 ```
+
+### 10. Custom Config
+```bash
+python bbox.py input.pdf output.pdf --config production.yaml
+```
+
+## Building Standalone Binary
+
+### Install PyInstaller
+```bash
+pip install pyinstaller
+```
+
+### Build Command
+```bash
+pyinstaller --onefile --icon=bbox.ico --name=bbox bbox.py
+```
+
+### Platform-Specific Builds
+
+#### Windows
+```bash
+pyinstaller --onefile --icon=bbox.ico --name=bbox.exe --add-data="config.yaml;." bbox.py
+```
+
+#### Linux/Mac
+```bash
+pyinstaller --onefile --name=bbox --add-data="config.yaml:." bbox.py
+```
+
+The binary will be in `dist/` folder after building.
 
 ## Output Example
 
@@ -266,7 +304,7 @@ python bbox.py input.pdf output.pdf --config custom-config.yaml
 ============================================================
 
 📁 Files:
-  • Input:  input.pdf (47.9MB)
+  • Input:  document.pdf (47.9MB)
   • Output: output.pdf
 
 📄 Pages:
@@ -274,8 +312,8 @@ python bbox.py input.pdf output.pdf --config custom-config.yaml
 
 📐 Spacing:
   • Outer margin:  0.10 inch (7.2 pts)
-  • Inner padding: 0.025 inch (1.8 pts)
-  • Total spacing: 0.125 inch
+  • Inner padding: 0.10 inch (7.2 pts)
+  • Total spacing: 0.20 inch
 
 🎨 Border Style:
   • Style: Rounded
@@ -294,33 +332,7 @@ python bbox.py input.pdf output.pdf --config custom-config.yaml
 
 ============================================================
 
-📐 PREVIEW OF BORDER LAYOUT:
-
-────────────────────────────────────────────────────────────
-│                                                          │
-│ ╭████████████████████████████████████████████████████╮  │
-│ █                                                    █  │
-│ █  ·············································     █  │
-│ █  ·                                           ·     █  │
-│ █  ·                                           ·     █  │
-│ █  ·                                           ·     █  │
-│ █  ·              PDF CONTENT                  ·     █  │
-│ █  ·             ← preserved →                 ·     █  │
-│ █  ·                                           ·     █  │
-│ █  ·                                           ·     █  │
-│ █  ·············································     █  │
-│ █                                                    █  │
-│ ╰████████████████████████████████████████████████████╯  │
-│                                                          │
-────────────────────────────────────────────────────────────
-                                                    1/514
-
-LEGEND:
-  ─│ Page edges
-  █ Border (Black, rounded corners)
-  · Content area boundary
-  ← Outer margin: from page edge to border
-  → Inner padding: from border to content
+[ASCII Preview Here]
 
 ============================================================
 
@@ -328,7 +340,6 @@ LEGEND:
    • Press ENTER to continue
    • Press any other key to cancel
 
-   Waiting for input...
 ✅ Proceeding with processing...
 
 📄 Reading 'document.pdf'...
@@ -340,17 +351,27 @@ Quality mode: ORIGINAL
 ⏱️  Processing time: 45.23 seconds
 ```
 
-## About BBox
+## Quality Modes
 
-BBox (Bounding Box) is designed to add professional borders, page numbers, and titles to PDF documents while maintaining the quality of your content. Whether you're preparing documents for printing, adding margins for binding, or creating consistent formatting across multiple PDFs, BBox provides the control and flexibility you need.
+- **original**: Preserves vector graphics (best for text)
+- **high**: High-quality rasterization (best for mixed content)
+- **medium**: Balanced quality and speed
+- **standard**: Basic processing (fallback mode)
+
+## Requirements
+
+- Python 3.6+
+- pypdf 3.1.0+
+- reportlab 4.0.0+
+- pymupdf 1.23.0+ (optional, for advanced features)
+- pyyaml 6.0+
 
 ## License
 
-MIT License - Feel free to use and modify as needed.
+MIT License
 
 ## Contributing
 
-Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
-3. Submit a pull request with description
+3. Submit a pull request

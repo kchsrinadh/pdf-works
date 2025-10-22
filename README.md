@@ -1,5 +1,3 @@
-
-
 # PDF Works
 
 A collection of Python tools for PDF manipulation and processing.
@@ -23,6 +21,7 @@ Features:
 - Page range selection
 - Multiple quality modes
 - YAML configuration support
+- Standalone binary available
 
 [Full documentation →](./bbox/README.md)
 
@@ -63,6 +62,14 @@ pip install -r requirements.txt
    python bbox.py input.pdf output.pdf --help
    ```
 
+## Using Pre-built Binaries
+
+Download pre-built executables from releases:
+- Windows: `bbox.exe`
+- Linux/Mac: `bbox`
+
+No Python installation required for binaries.
+
 ## Repository Structure
 
 ```
@@ -72,7 +79,8 @@ pdf-works/
 │   ├── config.yaml
 │   ├── requirements.txt
 │   ├── README.md
-│   └── example files
+│   └── dist/
+│       └── bbox.exe (or bbox for Linux/Mac)
 └── README.md
 ```
 
@@ -83,11 +91,3 @@ MIT License
 ## Contributing
 
 Feel free to submit issues or pull requests if you find bugs or have suggestions.
-```
-
-The main changes:
-1. Renamed all references from "BoundaryBox" and "boundary-box" to "BBox" and "bbox"
-2. Added documentation for page numbering and title features
-3. Updated the output example to reflect the new page numbering
-4. Added page numbering format examples
-5. Updated directory paths and file names to use "bbox"
