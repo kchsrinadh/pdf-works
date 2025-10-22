@@ -10,7 +10,7 @@ border:
 # Spacing
 spacing:
   outer_margin: 0.1      # Space from page edge to border
-  inner_padding: 0.025    # Space from border to content
+  inner_padding: 0.1    # Space from border to content
   unit: "inch"          # Options: inch, mm, pt
 
 # Quality settings

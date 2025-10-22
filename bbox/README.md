@@ -56,7 +56,7 @@ border:
 # Spacing
 spacing:
   outer_margin: 0.1      # Space from page edge to border
-  inner_padding: 0.025    # Space from border to content
+  inner_padding: 0.1    # Space from border to content
   unit: "inch"          # Options: inch, mm, pt
 
 # Quality settings
@@ -82,7 +82,7 @@ page_numbers:
 # Document title
 title:
   enabled: false         # Enable/disable title
-  text: ""              # Title text (leave empty to extract from PDF metadata)
+  text: "title"              # Title text (leave empty to extract from PDF metadata)
   position: "top-center" # Options: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
   location: "inside"    # Options: inside (within border), outside (outside border)
   font_size: 12         # Font size in points
