@@ -182,3 +182,5 @@ cython_debug/
 
 in.pdf
 out.pdf
+
+/test
