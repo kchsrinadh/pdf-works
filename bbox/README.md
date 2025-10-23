@@ -15,6 +15,7 @@ A powerful Python tool for adding customizable borders, page numbers, and titles
 - ✅ **Settings Preview**: Review all settings before processing with visual ASCII preview
 - 👁️ **Visual Layout Preview**: See exactly how borders will look before processing
 - 📄 **Page Range Selection**: Process specific pages or page ranges
+- 🚀 **Auto Output Naming**: Automatically generates output filename when not specified
 - ⌨️ **Intuitive Confirmation**: Simple Enter/any-key confirmation system
 - ⚙️ **Configuration File**: YAML-based configuration for default settings
 - 💾 **Standalone Binary**: Available as executable for deployment without Python
@@ -39,7 +40,10 @@ pyinstaller --onefile --icon=bbox.ico --name=bbox bbox.py
 
 ## Configuration
 
-BBox uses a `config.yaml` file for default settings. If not present, built-in defaults are used.
+BBox uses a `config.yaml` file for default settings. If not present, built-in defaults are used. The config file is searched in multiple locations:
+- Same directory as the executable (for binary version)
+- Current working directory
+- Script directory (for Python version)
 
 ### Default Configuration (config.yaml)
 ```yaml
@@ -94,37 +98,41 @@ title:
 processing:
   pages: "all"          # Page range: all, or specific like "1-5,10,15-20"
   confirm: true         # Show confirmation prompt (false to skip)
+  output_suffix: "_bbox"  # Suffix for auto-generated output filenames
 ```
 
 ## Quick Start
 
-### Using Python Script
+### Basic Usage - Auto Output
 ```bash
-python bbox.py input.pdf output.pdf
+# Automatically creates input_bbox.pdf
+python bbox.py input.pdf
+
+# Or with binary
+bbox input.pdf
 ```
 
-### Using Binary
+### Specify Output File
 ```bash
-# Windows
-bbox.exe input.pdf output.pdf
+python bbox.py input.pdf output.pdf
 
-# Linux/Mac
-./bbox input.pdf output.pdf
+# Or with binary
+bbox input.pdf output.pdf
 ```
 
 ### Override Config Settings
 ```bash
-python bbox.py input.pdf output.pdf --border-style solid --corner-radius 10
+bbox input.pdf --border-style solid --corner-radius 10
 ```
 
 ### Process Specific Pages
 ```bash
-python bbox.py input.pdf output.pdf --pages 1-10
+bbox input.pdf --pages 1-10
 ```
 
 ### Skip Confirmation
 ```bash
-python bbox.py input.pdf output.pdf -y
+bbox input.pdf -y
 ```
 
 ## Command Line Options
@@ -133,7 +141,7 @@ python bbox.py input.pdf output.pdf -y
 | Argument | Description |
 |----------|-------------|
 | `input_pdf` | Path to input PDF file |
-| `output_pdf` | Path to output PDF file |
+| `output_pdf` | Path to output PDF file (optional, auto-generated with suffix if not provided) |
 
 ### Page Selection
 | Option | Default | Description |
@@ -168,6 +176,13 @@ python bbox.py input.pdf output.pdf -y
 | `-y`, `--yes` | Skip confirmation prompt |
 | `--config` | Path to custom config file (default: config.yaml) |
 
+## Output Filename Generation
+
+When no output file is specified, BBox automatically generates one:
+- Default pattern: `input_filename` + `_bbox` + `.pdf`
+- Example: `document.pdf` → `document_bbox.pdf`
+- The suffix can be customized in `config.yaml` under `processing.output_suffix`
+
 ## Page Numbering
 
 ### Format Strings
@@ -193,39 +208,78 @@ Add titles from PDF metadata or custom text:
 
 ### Rounded (Default)
 ```bash
-python bbox.py input.pdf output.pdf --border-style rounded --corner-radius 10
+bbox input.pdf --border-style rounded --corner-radius 10
 ```
 
 ### Solid
 ```bash
-python bbox.py input.pdf output.pdf --border-style solid
+bbox input.pdf --border-style solid
 ```
 
 ### Dashed (standard mode only)
 ```bash
-python bbox.py input.pdf output.pdf --border-style dashed --quality standard
+bbox input.pdf --border-style dashed --quality standard
 ```
 
 ### Dotted (standard mode only)
 ```bash
-python bbox.py input.pdf output.pdf --border-style dotted --quality standard
+bbox input.pdf --border-style dotted --quality standard
 ```
 
 ## Usage Examples
 
-### 1. Basic Border with Page Numbers
+### 1. Quick Border Addition (Auto Output)
 ```bash
-python bbox.py document.pdf output.pdf
+bbox document.pdf
+# Creates: document_bbox.pdf
 ```
 
-### 2. Custom Page Format in Config
+### 2. Custom Output Location
+```bash
+bbox /path/to/input.pdf /different/path/output.pdf
+```
+
+### 3. Process Specific Pages with Auto Output
+```bash
+bbox document.pdf --pages 1-10,15,20-25
+# Creates: document_bbox.pdf with only specified pages
+```
+
+### 4. Minimal Margins for Maximum Content
+```bash
+bbox document.pdf --outer 0.05 --inner 0.05
+```
+
+### 5. Colored Border with Page Numbers
+```bash
+bbox document.pdf --border-color "0,0,255" --border-width 2
+```
+
+### 6. High Quality for Images
+```bash
+bbox document.pdf --quality high --dpi 600
+```
+
+### 7. Custom Config and Output
+```bash
+bbox document.pdf output.pdf --config production.yaml
+```
+
+### 8. Batch Processing Without Confirmation
+```bash
+bbox input.pdf -y
+```
+
+### 9. Custom Page Number Format
+Edit config.yaml:
 ```yaml
 page_numbers:
   format: "Page {n} of {total}"
   position: "bottom-center"
 ```
 
-### 3. Add Title to First Page
+### 10. Add Title to First Page
+Edit config.yaml:
 ```yaml
 title:
   enabled: true
@@ -233,78 +287,41 @@ title:
   position: "top-center"
 ```
 
-### 4. Process Page Range
-```bash
-python bbox.py document.pdf output.pdf --pages 1-10,15,20-25
-```
-
-### 5. Minimal Margins
-```bash
-python bbox.py document.pdf output.pdf --outer 0.05 --inner 0.05
-```
-
-### 6. Colored Border
-```bash
-python bbox.py document.pdf output.pdf --border-color "0,0,255" --border-width 2
-```
-
-### 7. High Quality for Images
-```bash
-python bbox.py document.pdf output.pdf --quality high --dpi 600
-```
-
-### 8. Skip First 2 Pages for Numbering
-```yaml
-page_numbers:
-  skip_first: 2
-  start_number: 1
-```
-
-### 9. Batch Processing
-```bash
-python bbox.py input.pdf output.pdf -y
-```
-
-### 10. Custom Config
-```bash
-python bbox.py input.pdf output.pdf --config production.yaml
-```
-
 ## Building Standalone Binary
 
-### Install PyInstaller
+### Windows Build
 ```bash
+# Install PyInstaller
 pip install pyinstaller
+
+# Build executable
+pyinstaller --onefile --icon=bbox.ico --name=bbox.exe bbox.py
+
+# Copy files
+Copy-Item "dist\bbox.exe" "$env:LOCALAPPDATA\bbox\bbox.exe" -Force
+Copy-Item "config.yaml" "$env:LOCALAPPDATA\bbox\config.yaml" -Force
+setx BBOX "%LOCALAPPDATA%\bbox\bbox"
+
 ```
 
-### Build Command
+### Linux/Mac Build
 ```bash
-pyinstaller --onefile --icon=bbox.ico --name=bbox bbox.py
+# Build executable
+pyinstaller --onefile --name=bbox bbox.py
+
+# Make executable
+chmod +x dist/bbox
+
+# Install system-wide (requires sudo)
+sudo cp dist/bbox /usr/local/bin/
+sudo cp config.yaml /usr/local/share/bbox/
+
+# Or install for current user
+mkdir -p ~/.local/bin
+cp dist/bbox ~/.local/bin/
+mkdir -p ~/.config/bbox
+cp config.yaml ~/.config/bbox/
 ```
-
-### Platform-Specific Builds
-
-#### Windows
-```bash
-# Requires Elevated Permissions Powershell
-pyinstaller --onefile --icon=bbox.ico --name=bbox.exe --add-data="config.yaml;." bbox.py
-
-echo.
-echo Creating installation directory...
-mkdir "C:\Program Files\bbox" 2>nul
-
-echo Copying files...
-copy /Y "dist\bbox.exe" "C:\Program Files\bbox\bbox.exe"
-copy /Y "config.yaml" "C:\Program Files\bbox\config.yaml"
-```
-
-#### Linux/Mac
-```bash
-pyinstaller --onefile --name=bbox --add-data="config.yaml:." bbox.py
-```
-
-The binary will be in `dist/` folder after building.
-
 
 ## Output Example
 
@@ -315,7 +332,7 @@ The binary will be in `dist/` folder after building.
 
 📁 Files:
   • Input:  document.pdf (47.9MB)
-  • Output: output.pdf
+  • Output: document_bbox.pdf
 
 📄 Pages:
   • Processing: All pages (1-514)
@@ -342,7 +359,7 @@ The binary will be in `dist/` folder after building.
 
 ============================================================
 
-[ASCII Preview Here]
+[ASCII Preview of Border Layout]
 
 ============================================================
 
@@ -357,7 +374,7 @@ Processing 'document.pdf' (514 of 514 pages, 47.9MB)
 Quality mode: ORIGINAL
 [########################################] 514/514 pages
 💾 Saving PDF with quality preservation...
-✅ Saved 'output.pdf' (48.2MB)
+✅ Saved 'document_bbox.pdf' (48.2MB)
 ⏱️  Processing time: 45.23 seconds
 ```
 
@@ -367,6 +384,23 @@ Quality mode: ORIGINAL
 - **high**: High-quality rasterization (best for mixed content)
 - **medium**: Balanced quality and speed
 - **standard**: Basic processing (fallback mode)
+
+## Troubleshooting
+
+### Config File Not Found
+- For binary: Place `config.yaml` in the same directory as `bbox.exe`
+- For Python: Place in current directory or script directory
+- Use `--config` to specify a custom location
+
+### Page Numbers Not Showing
+- Check that `page_numbers.enabled` is `true` in config
+- Verify the format string contains `{n}` placeholder
+- Check position isn't placing text outside visible area
+
+### Binary Not Working
+- Ensure all dependencies are included in the build
+- Check antivirus isn't blocking the executable
+- Try running from command line to see error messages
 
 ## Requirements
 
@@ -384,4 +418,4 @@ MIT License
 
 1. Fork the repository
 2. Create a feature branch
-3. Submit a pull request
+3. Submit a pull request with description

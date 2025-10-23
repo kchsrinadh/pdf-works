@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-BoundaryBox - Add customizable borders to PDF pages with quality preservation
-Usage: python boundary-box.py input.pdf output.pdf [options]
+BBox - Add customizable borders to PDF pages with quality preservation
+Usage: python bbox.py input.pdf [output.pdf] [options]
 """
 
 import argparse
 import sys
+import os
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import RectangleObject, ArrayObject, NameObject, DictionaryObject
 from reportlab.pdfgen import canvas
@@ -14,7 +15,6 @@ from reportlab.lib.units import inch, mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import io
-import os
 import time
 import re
 import yaml
@@ -84,21 +84,71 @@ def load_config(config_path='config.yaml'):
         },
         'processing': {
             'pages': 'all',
-            'confirm': True
+            'confirm': True,
+            'output_suffix': '_bbox'  # Default suffix for auto-generated output filename
         }
     }
     
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                user_config = yaml.safe_load(f)
-                if user_config:
-                    return user_config
-        except Exception as e:
-            print(f"⚠️  Error loading config file: {e}")
-            print("   Using default configuration")
+    # Check multiple locations for config file
+    possible_paths = []
     
+    # Check if running from PyInstaller bundle
+    if getattr(sys, 'frozen', False):
+        # Running from executable
+        application_path = sys._MEIPASS  # PyInstaller temp directory
+        exe_dir = os.path.dirname(sys.executable)  # Directory of the exe
+        
+        # Try bundled config first
+        possible_paths.append(os.path.join(application_path, config_path))
+        # Then check exe directory
+        possible_paths.append(os.path.join(exe_dir, config_path))
+        # Check current working directory
+        possible_paths.append(config_path)
+    else:
+        # Running from Python script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        possible_paths.append(os.path.join(script_dir, config_path))
+        possible_paths.append(config_path)
+    
+    # Try to load config from possible locations
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    user_config = yaml.safe_load(f)
+                    if user_config:
+                        print(f"✅ Loaded config from: {path}")
+                        # Merge with defaults to ensure all keys exist
+                        merged_config = default_config.copy()
+                        for key in user_config:
+                            if key in merged_config and isinstance(merged_config[key], dict):
+                                merged_config[key].update(user_config[key])
+                            else:
+                                merged_config[key] = user_config[key]
+                        return merged_config
+            except Exception as e:
+                print(f"⚠️  Error loading config file from {path}: {e}")
+    
+    # No config found, use defaults
+    print("📝 Using default configuration (no config.yaml found)")
     return default_config
+
+def generate_output_filename(input_path, suffix='_bbox'):
+    """Generate output filename by adding suffix before extension"""
+    # Get directory and filename
+    directory = os.path.dirname(input_path)
+    filename = os.path.basename(input_path)
+    
+    # Split filename and extension
+    name, ext = os.path.splitext(filename)
+    
+    # Create new filename with suffix
+    output_filename = f"{name}{suffix}{ext}"
+    
+    # Combine with directory path
+    if directory:
+        return os.path.join(directory, output_filename)
+    return output_filename
 
 class ProgressBar:
     """Simple progress bar for console output"""
@@ -262,7 +312,6 @@ def add_page_elements_pymupdf(page, page_num, total_pages, config, outer_margin,
                 )
                 
                 # PyMuPDF uses top-left origin, so we need to convert Y coordinate
-                # PDF y=0 is bottom, PyMuPDF y=0 is top
                 pymupdf_y = page_height - y
                 
                 # Insert text
@@ -535,7 +584,7 @@ def display_settings(args, outer_margin_pts, inner_padding_pts, border_color,
                     page_indices, total_pages, config):
     """Display the settings that will be applied with visual preview"""
     print("\n" + "="*60)
-    print("📋 BOUNDARYBOX - SETTINGS TO BE APPLIED")
+    print("📋 BBOX - SETTINGS TO BE APPLIED")
     print("="*60)
     
     print(f"\n📁 Files:")
@@ -1012,24 +1061,27 @@ def main():
     config = load_config()
     
     parser = argparse.ArgumentParser(
-        description='BoundaryBox - Add customizable borders to PDF pages',
+        description='BBox - Add customizable borders to PDF pages',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with defaults from config.yaml
-  python boundary-box.py input.pdf output.pdf
+  # Basic usage (auto-generates output filename)
+  bbox input.pdf
+  
+  # Specify output file
+  bbox input.pdf output.pdf
   
   # Process specific pages only
-  python boundary-box.py input.pdf output.pdf --pages 1-5,10,15-20
+  bbox input.pdf --pages 1-5,10,15-20
   
   # Override border style
-  python boundary-box.py input.pdf output.pdf --border-style solid
+  bbox input.pdf --border-style solid
   
   # Custom margins and rounded corners
-  python boundary-box.py input.pdf output.pdf --outer 1.0 --inner 0.5 --corner-radius 15
+  bbox input.pdf --outer 1.0 --inner 0.5 --corner-radius 15
   
   # Skip confirmation prompt
-  python boundary-box.py input.pdf output.pdf -y
+  bbox input.pdf -y
 
 Border Styles:
   - rounded: Rounded corners (default)
@@ -1046,7 +1098,7 @@ Page Range Examples:
     )
     
     parser.add_argument('input_pdf', help='Input PDF file path')
-    parser.add_argument('output_pdf', help='Output PDF file path')
+    parser.add_argument('output_pdf', nargs='?', help='Output PDF file path (optional, auto-generated if not provided)')
     
     parser.add_argument('--pages', '--page-range', type=str, 
                        default=config['processing']['pages'],
@@ -1096,6 +1148,11 @@ Page Range Examples:
     
     if args.config != 'config.yaml':
         config = load_config(args.config)
+    
+    # Generate output filename if not provided
+    if not args.output_pdf:
+        suffix = config['processing'].get('output_suffix', '_bbox')
+        args.output_pdf = generate_output_filename(args.input_pdf, suffix)
     
     if not os.path.exists(args.input_pdf):
         print(f"❌ Error: Input file '{args.input_pdf}' not found")
